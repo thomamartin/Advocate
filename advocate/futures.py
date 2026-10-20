@@ -9,6 +9,7 @@ class FuturesSession(requests_futures.sessions.FuturesSession, Session):
     def __init__(self, executor=None, max_workers=2, session=None, *args,
                  **kwargs):
         adapter_kwargs = {}
+        self._owned_executor = executor is None
         if executor is None:
             executor = ThreadPoolExecutor(max_workers=max_workers)
             # set connection pool size equal to max_workers if needed
