@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "advocate"
 dynamic = ["version"]
 description = "A wrapper around requests for safely making HTTP requests on behalf of a third party"
-readme = {file = "README.rst", content-type = "text/x-rst"}
+readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 authors = [
