@@ -23,7 +23,14 @@ Installation
 
     pip install advocate
 
-Advocate is officially supported on CPython 3.6+. PyPy 3 may work as well, but is not tested.
+Advocate supports CPython 3.10 and newer. PyPy may work as well, but is not tested.
+
+To install the package with its test dependencies and run the test suite:
+
+.. code-block:: bash
+
+    python -m pip install -e ".[test]"
+    python -m pytest
 
 Examples
 ========

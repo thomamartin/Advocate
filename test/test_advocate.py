@@ -4,13 +4,13 @@ import ipaddress
 import pickle
 import socket
 import unittest
+from unittest.mock import patch
 
 # This needs to be done before third-party imports to make sure they all use
 # our wrapped socket class, especially in case of subclasses.
 from .monkeypatching import CheckedSocket, DisallowedConnectException
 socket.socket = CheckedSocket
 
-from mock import patch
 import requests
 import requests_mock
 
