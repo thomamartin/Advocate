@@ -15,7 +15,7 @@ Advocate was inspired by [fin1te's SafeCurl project](https://github.com/fin1te/s
 uv add advocate
 ```
 
-Advocate supports CPython 3.10 and newer. PyPy may work as well, but is not tested.
+Advocate supports CPython 3.11 and newer. PyPy may work as well, but is not tested.
 
 To install the package with its test dependencies and run the test suite:
 

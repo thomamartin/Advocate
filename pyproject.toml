@@ -7,7 +7,7 @@ name = "advocate"
 version = "1.0.0"
 description = "A wrapper around requests for safely making HTTP requests on behalf of a third party"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "Apache-2.0"
 authors = [
     {name = "Jordan Milne", email = "advocate@saynotolinux.com"},
@@ -18,7 +18,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Natural Language :: English",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
