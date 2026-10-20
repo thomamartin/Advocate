@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=77", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.13.3,<0.14"]
+build-backend = "uv_build"
 
 [project]
 name = "advocate"
-dynamic = ["version"]
+version = "1.0.0"
 description = "A wrapper around requests for safely making HTTP requests on behalf of a third party"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -44,8 +44,24 @@ test = [
 Homepage = "https://github.com/JordanMilne/Advocate"
 Source = "https://github.com/JordanMilne/Advocate"
 
-[tool.setuptools.dynamic]
-version = {attr = "advocate.__version__"}
+[tool.uv.build-backend]
+module-name = "advocate"
+module-root = ""
 
-[tool.setuptools]
-packages = ["advocate"]
+[tool.pytest.ini_options]
+addopts = ["-p", "no:warnings"]
+
+[tool.coverage.run]
+omit = ["advocate/packages/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self\\.debug",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+]
+ignore_errors = true

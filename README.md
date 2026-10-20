@@ -12,7 +12,7 @@ Advocate was inspired by [fin1te's SafeCurl project](https://github.com/fin1te/s
 ## Installation
 
 ```bash
-python -m pip install advocate
+uv add advocate
 ```
 
 Advocate supports CPython 3.10 and newer. PyPy may work as well, but is not tested.
@@ -20,8 +20,8 @@ Advocate supports CPython 3.10 and newer. PyPy may work as well, but is not test
 To install the package with its test dependencies and run the test suite:
 
 ```bash
-python -m pip install -e ".[test]"
-python -m pytest
+uv sync --extra test
+uv run pytest
 ```
 
 ## Examples
