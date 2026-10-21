@@ -46,7 +46,8 @@ test = [
     "requests-futures>=1.1.0",
     "requests-mock",
 ]
-lint = ["ruff==0.17.1"]
+# ruff itself is pinned in .pre-commit-config.yaml
+lint = ["pre-commit>=4"]
 
 [tool.uv.build-backend]
 # The distribution is called advocate2, but the module is still imported as `advocate`
