@@ -3,7 +3,7 @@ requires = ["uv_build>=0.13.3,<0.14.0"]
 build-backend = "uv_build"
 
 [project]
-name = "advocate"
+name = "advocate2"
 version = "2.0.0"
 description = "A wrapper around the requests library for safely making HTTP requests on behalf of a third party"
 readme = "README.md"
@@ -36,8 +36,8 @@ dependencies = [
 futures = ["requests-futures>=1.1.0"]
 
 [project.urls]
-Homepage = "https://github.com/JordanMilne/Advocate"
-Issues = "https://github.com/JordanMilne/Advocate/issues"
+Homepage = "https://github.com/thomamartin/Advocate"
+Issues = "https://github.com/thomamartin/Advocate/issues"
 
 [dependency-groups]
 test = [
@@ -49,6 +49,8 @@ test = [
 lint = ["ruff==0.17.1"]
 
 [tool.uv.build-backend]
+# The distribution is called advocate2, but the module is still imported as `advocate`
+module-name = "advocate"
 module-root = ""
 source-include = ["test/**"]
 

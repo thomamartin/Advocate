@@ -1,9 +1,10 @@
-# Advocate
+# Advocate2
 
-![Python versions](https://img.shields.io/pypi/pyversions/advocate.svg)
-[![PyPI version](https://img.shields.io/pypi/v/advocate.svg)](https://pypi.python.org/pypi/advocate)
+![Python versions](https://img.shields.io/pypi/pyversions/advocate2.svg)
+[![PyPI version](https://img.shields.io/pypi/v/advocate2.svg)](https://pypi.org/project/advocate2/)
 
-**Advocate is no longer maintained, please fork and rename if you would like to continue work on it**
+**Advocate2 is a fork of [Advocate](https://github.com/JordanMilne/Advocate), which is no longer maintained.**
+It's a drop-in replacement: install `advocate2` and keep using `import advocate`.
 
 Advocate is a set of tools based around the [requests library](https://github.com/psf/requests) for safely making
 HTTP requests on behalf of a third party. Specifically, it aims to prevent
@@ -14,8 +15,11 @@ Advocate was inspired by [fin1te's SafeCurl project](https://github.com/fin1te/s
 ## Installation
 
 ```bash
-pip install advocate
+pip install advocate2
 ```
+
+Advocate2 installs the same `advocate` module as the original package, so uninstall `advocate` first
+if you're switching.
 
 Advocate is officially supported on CPython 3.11+. PyPy 3 may work as well, but is not tested.
 
@@ -90,7 +94,7 @@ A thin wrapper around [requests-futures](https://github.com/ross/requests-future
 Install it with the `futures` extra:
 
 ```bash
-pip install "advocate[futures]"
+pip install "advocate2[futures]"
 ```
 
 Then use it like a regular `FuturesSession`:
