@@ -1,6 +1,5 @@
 import ipaddress
 import socket
-from socket import timeout as SocketTimeout
 
 from urllib3.connection import HTTPSConnection, HTTPConnection
 from urllib3.exceptions import ConnectTimeoutError
@@ -43,7 +42,7 @@ def fix_addrinfo(records):
     if records:
         # Apparently the canonical name is only included in the first record?
         # Add it to all of them.
-        assert(len(records[0]) == 5)
+        assert len(records[0]) == 5
         canonname = records[0][3]
     return tuple(fix_record(x, canonname) for x in records)
 
@@ -110,8 +109,8 @@ def validating_create_connection(address,
                 sock.connect(sa)
                 return sock
 
-            except socket.error as _:
-                err = _
+            except OSError as e:
+                err = e
                 if sock is not None:
                     sock.close()
                     sock = None
@@ -122,7 +121,7 @@ def validating_create_connection(address,
     if err is not None:
         raise err
     else:
-        raise socket.error("getaddrinfo returns an empty list")
+        raise OSError("getaddrinfo returns an empty list")
 
 
 # TODO: Is there a better way to add this to multiple classes with different
@@ -155,17 +154,18 @@ def _validating_new_conn(self):
             **extra_kw
         )
 
-    except SocketTimeout:
+    except TimeoutError as e:
         raise ConnectTimeoutError(
-            self, "Connection to %s timed out. (connect timeout=%s)" %
-            (self.host, self.timeout))
+            self,
+            f"Connection to {self.host} timed out. (connect timeout={self.timeout})",
+        ) from e
 
     return conn
 
 
 # Don't silently break if the private API changes across urllib3 versions
-assert(hasattr(HTTPConnection, '_new_conn'))
-assert(hasattr(HTTPSConnection, '_new_conn'))
+assert hasattr(HTTPConnection, '_new_conn')
+assert hasattr(HTTPSConnection, '_new_conn')
 
 
 class ValidatingHTTPConnection(HTTPConnection):
@@ -173,7 +173,7 @@ class ValidatingHTTPConnection(HTTPConnection):
 
     def __init__(self, *args, **kwargs):
         self._validator = kwargs.pop("validator")
-        HTTPConnection.__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
 
 
 class ValidatingHTTPSConnection(HTTPSConnection):
@@ -181,4 +181,4 @@ class ValidatingHTTPSConnection(HTTPSConnection):
 
     def __init__(self, *args, **kwargs):
         self._validator = kwargs.pop("validator")
-        HTTPSConnection.__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)

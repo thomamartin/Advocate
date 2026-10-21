@@ -1,4 +1,5 @@
-__version__ = "1.0.0"
+# Keep in sync with pyproject.toml, the test suite checks this
+__version__ = "2.0.0"
 
 from requests import utils
 from requests.models import Request, Response, PreparedRequest
