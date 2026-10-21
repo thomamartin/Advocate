@@ -1,4 +1,6 @@
-__version__ = "1.0.0"
+import importlib.metadata
+
+__version__ = importlib.metadata.version(__name__)
 
 from requests import utils
 from requests.models import Request, Response, PreparedRequest
