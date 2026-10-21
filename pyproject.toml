@@ -6,7 +6,7 @@ build-backend = "uv_build"
 name = "advocate"
 version = "1.0.0"
 description = "A wrapper around the requests library for safely making HTTP requests on behalf of a third party"
-readme = "README.rst"
+readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 authors = [{ name = "Jordan Milne", email = "advocate@saynotolinux.com" }]
