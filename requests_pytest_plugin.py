@@ -3,6 +3,7 @@ import ipaddress
 import os
 import socket
 
+import pytest
 import requests
 import urllib3
 
@@ -14,12 +15,6 @@ from test.monkeypatching import CheckedSocket
 
 
 SKIP_EXCEPTIONS = (MountDisabledException, ProxyDisabledException)
-IGNORED_ASSERT_PREFIXES = (
-    # We use a newer version of pytest-httpbin where this won't happen!
-    "assert () == ('SubjectAltNameWarning',)",
-    # This happens in utils tests due to an stdlib change. Not our fault!
-    "assert 'http:////example.com/path' == 'http://example.com/path'",
-)
 
 
 def pytest_runtestloop():
@@ -61,13 +56,12 @@ def pytest_runtestloop():
     raise RuntimeError("Requests patching failed, can't run patched requests test suite!")
 
 
+@pytest.hookimpl(wrapper=True)
 def pytest_runtest_makereport(item, call):
     # This is necessary because we pull in requests' test suite,
     # which sometimes tests `session.mount()`. We disable that
     # method, so we need to ignore tests that use it.
-
-    from _pytest.runner import pytest_runtest_makereport as mr
-    report = mr(item, call)
+    report = yield
 
     if call.excinfo is not None:
         exc = call.excinfo.value
@@ -77,9 +71,5 @@ def pytest_runtest_makereport(item, call):
         if isinstance(exc, SKIP_EXCEPTIONS):
             report.outcome = 'skipped'
             report.wasxfail = "reason: Advocate is not meant to support this"
-        if isinstance(exc, AssertionError):
-            if exc.args and any(exc.args[0].startswith(prefix) for prefix in IGNORED_ASSERT_PREFIXES):
-                report.outcome = 'skipped'
-                report.wasxfail = "reason: Outdated assertion: %s" % exc.args[0]
 
     return report

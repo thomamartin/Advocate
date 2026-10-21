@@ -38,7 +38,7 @@ class ValidatingPoolManager(PoolManager):
         super().__init__(*args, **kwargs)
 
         # Make sure the API hasn't changed
-        assert (hasattr(self, 'pool_classes_by_scheme'))
+        assert hasattr(self, 'pool_classes_by_scheme')
 
         self.pool_classes_by_scheme = pool_classes_by_scheme
         self.key_fn_by_scheme = key_fn_by_scheme.copy()

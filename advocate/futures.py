@@ -1,6 +1,4 @@
 import requests_futures.sessions
-from concurrent.futures import ThreadPoolExecutor
-from requests.adapters import DEFAULT_POOLSIZE
 
 from . import Session
 
@@ -8,16 +6,10 @@ from . import Session
 class FuturesSession(requests_futures.sessions.FuturesSession, Session):
     def __init__(self, executor=None, max_workers=2, session=None, *args,
                  **kwargs):
-        adapter_kwargs = {}
-        if executor is None:
-            executor = ThreadPoolExecutor(max_workers=max_workers)
-            # set connection pool size equal to max_workers if needed
-            if max_workers > DEFAULT_POOLSIZE:
-                adapter_kwargs = dict(pool_connections=max_workers,
-                                      pool_maxsize=max_workers)
-        kwargs["_adapter_kwargs"] = adapter_kwargs
-        Session.__init__(self, *args, **kwargs)
-        self.executor = executor
+        # requests-futures sizes the connection pools by reconfiguring the
+        # adapters already mounted on the session, so ours stay in place.
+        # Requests always go through `self`, `session` is only validated.
+        super().__init__(executor, max_workers, None, *args, **kwargs)
         self.session = session
 
     @property

@@ -10,7 +10,7 @@ Advocate
 
 **Advocate is no longer maintained, please fork and rename if you would like to continue work on it**
 
-Advocate is a set of tools based around the `requests library <https://github.com/kennethreitz/requests>`_ for safely making
+Advocate is a set of tools based around the `requests library <https://github.com/psf/requests>`_ for safely making
 HTTP requests on behalf of a third party. Specifically, it aims to prevent 
 common techniques that enable `SSRF attacks <https://cwe.mitre.org/data/definitions/918.html>`_. 
 
@@ -23,7 +23,7 @@ Installation
 
     pip install advocate
 
-Advocate is officially supported on CPython 3.6+. PyPy 3 may work as well, but is not tested.
+Advocate is officially supported on CPython 3.10+. PyPy 3 may work as well, but is not tested.
 
 Examples
 ========
@@ -97,7 +97,14 @@ use plain 'ol requests by doing something like:
 requests-futures support
 ========================
 
-A thin wrapper around `requests-futures <https://github.com/ross/requests-futures>`_ is provided to ease writing async-friendly code:
+A thin wrapper around `requests-futures <https://github.com/ross/requests-futures>`_ is provided to ease writing async-friendly code.
+Install it with the ``futures`` extra:
+
+.. code-block:: bash
+
+    pip install "advocate[futures]"
+
+Then use it like a regular :python:`FuturesSession`:
 
 .. code-block:: python
 
@@ -221,7 +228,7 @@ Acknowledgements
 ================
 
 * https://github.com/fin1te/safecurl for inspiration
-* https://github.com/kennethreitz/requests for the lovely requests module
+* https://github.com/psf/requests for the lovely requests module
 * https://bitbucket.org/kwi/py2-ipaddress for the backport of ipaddress
 * https://github.com/hakobe/paranoidhttp a similar project targeting golang
 * https://github.com/uber-common/paranoid-request a similar project targeting Node

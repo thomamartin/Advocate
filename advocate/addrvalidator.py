@@ -4,11 +4,11 @@ import ipaddress
 import re
 
 try:
-    import netifaces
-    HAVE_NETIFACES = True
+    import ifaddr
+    HAVE_IFADDR = True
 except ImportError:
-    netifaces = None
-    HAVE_NETIFACES = False
+    ifaddr = None
+    HAVE_IFADDR = False
 
 from .exceptions import NameserverException, ConfigException
 
@@ -23,20 +23,20 @@ def canonicalize_hostname(hostname):
 
 
 def determine_local_addresses():
-    """Get all IPs that refer to this machine according to netifaces"""
-    if not HAVE_NETIFACES:
+    """Get all IPs that refer to this machine according to ifaddr"""
+    if not HAVE_IFADDR:
         raise ConfigException("Tried to determine local addresses, "
-                              "but netifaces module was not importable")
+                              "but ifaddr module was not importable")
     ips = []
-    for interface in netifaces.interfaces():
-        if_families = netifaces.ifaddresses(interface)
-        for family_kind in {netifaces.AF_INET, netifaces.AF_INET6}:
-            addrs = if_families.get(family_kind, [])
-            for addr in (x.get("addr", "") for x in addrs):
-                if family_kind == netifaces.AF_INET6:
-                    # We can't do anything sensible with the scope here
-                    addr = addr.split("%")[0]
-                ips.append(ipaddress.ip_network(addr))
+    for adapter in ifaddr.get_adapters():
+        for ip in adapter.ips:
+            if ip.is_IPv6:
+                # v6 addresses are (address, flowinfo, scope_id) tuples.
+                # We can't do anything sensible with the scope here
+                addr = ip.ip[0].split("%")[0]
+            else:
+                addr = ip.ip
+            ips.append(ipaddress.ip_network(addr))
     return ips
 
 
@@ -77,7 +77,7 @@ class AddrValidator:
             allow_6to4=False,
             allow_dns64=False,
             # Must be explicitly set to "False" if you don't want to try
-            # detecting local interface addresses with netifaces.
+            # detecting local interface addresses with ifaddr.
             autodetect_local_addresses=True,
     ):
         if not port_blacklist and not port_whitelist:
@@ -157,7 +157,7 @@ class AddrValidator:
             if addr_ip.is_site_local:
                 return False
         else:
-            raise ValueError("Unsupported IP version(?): %r" % addr_ip)
+            raise ValueError(f"Unsupported IP version(?): {addr_ip!r}")
 
         # 169.254.XXX.XXX, AWS uses these for autoconfiguration
         if addr_ip.is_link_local:
@@ -223,7 +223,7 @@ class AddrValidator:
 
     @add_local_address_arg
     def is_addrinfo_allowed(self, addrinfo, _local_addresses=None):
-        assert(len(addrinfo) == 5)
+        assert len(addrinfo) == 5
         # XXX: Do we care about any of the other elements? Guessing not.
         family, socktype, proto, canonname, sockaddr = addrinfo
 
@@ -239,7 +239,7 @@ class AddrValidator:
             # the `is_<x>` properties.
             ip, port, flow_info, scope_id = sockaddr
         else:
-            raise ValueError("Unexpected addrinfo format %r" % sockaddr)
+            raise ValueError(f"Unexpected addrinfo format {sockaddr!r}")
 
         # Probably won't help protect against SSRF, but might prevent our being
         # used to attack others' non-HTTP services. See

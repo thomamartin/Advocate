@@ -2,40 +2,69 @@ name: Tests
 
 on: [push, pull_request]
 
-jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-20.04]
-        requests_version: ["2.18.4", "2.23.0", "2.28.1"]
-        include:
-          - urllib3_version: "1.22"
-            python_version: "3.6"
-            pytest_version: "3.10.1"
-          # Make sure we're testing with an up-to-date urllib3 version, that can affect
-          # whether our hooks will work as well!
-          - requests_version: "2.28.1"
-            urllib3_version: "1.26.11"
-            python_version: "3.10"
-            pytest_version: "6.2.5"
+permissions:
+  contents: read
 
+jobs:
+  lint:
+    runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python ${{ matrix.python_version }}
-      uses: actions/setup-python@v2
+    - uses: actions/checkout@v7
+    - uses: actions/setup-python@v7
       with:
-        python-version: ${{ matrix.python_version }}
+        python-version: "3.15"
     - name: Install dependencies
       run: |
-        pip install "urllib3==${{matrix.urllib3_version}}"
-        pip install "pytest==${{matrix.pytest_version}}"
-        mkdir build
-        pip install --src build/ -e git+https://github.com/psf/requests@v${{matrix.requests_version}}#egg=requests -r requirements-test.txt
-    - name: Run tests
+        python -m pip install --upgrade pip
+        pip install --group lint
+    - name: Lint
+      run: ruff check
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python_version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
+        requests_version: ["2.34.2"]
+        urllib3_version: ["2.8.0"]
+        include:
+          # Make sure we still work with the oldest versions we claim to support,
+          # internal API changes can affect whether our hooks will work!
+          - python_version: "3.10"
+            requests_version: "2.32.0"
+            urllib3_version: "1.26.20"
+            # These fail without Advocate too: the mTLS test client cert expired
+            # in 2026, and the unicode header test hangs with urllib3 1.x.
+            requests_pytest_args: >-
+              --deselect tests/test_requests.py::TestPreparingURLs::test_different_connection_pool_for_mtls_settings
+              --deselect tests/test_requests.py::TestRequests::test_unicode_header_name
+
+    steps:
+    - uses: actions/checkout@v7
+    - name: Set up Python ${{ matrix.python_version }}
+      uses: actions/setup-python@v7
+      with:
+        python-version: ${{ matrix.python_version }}
+    - name: Check out requests ${{ matrix.requests_version }}
+      uses: actions/checkout@v7
+      with:
+        repository: psf/requests
+        ref: v${{ matrix.requests_version }}
+        path: build/requests
+    - name: Install dependencies
+      working-directory: build/requests
       run: |
-        export ADVOCATE_BUILD_DIR=$(pwd)
-        export WANTED_REQUESTS_VERSION="${{matrix.requests_version}}"
-        export WANTED_URLLIB3_VERSION="${{matrix.urllib3_version}}"
-        pytest --cov=advocate --cov-config=.coveragerc
-        pushd build/requests && PYTHONPATH="${ADVOCATE_BUILD_DIR}" pytest -p requests_pytest_plugin && popd
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt "urllib3==${{ matrix.urllib3_version }}" \
+          -e "${GITHUB_WORKSPACE}" --group "${GITHUB_WORKSPACE}/pyproject.toml:test"
+    - name: Run tests
+      run: pytest --cov=advocate
+    - name: Run requests' test suite with Advocate patched in
+      working-directory: build/requests
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+        WANTED_REQUESTS_VERSION: ${{ matrix.requests_version }}
+        WANTED_URLLIB3_VERSION: ${{ matrix.urllib3_version }}
+      run: pytest -p requests_pytest_plugin ${{ matrix.requests_pytest_args }}
