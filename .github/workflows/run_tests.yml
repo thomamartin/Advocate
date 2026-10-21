@@ -33,11 +33,8 @@ jobs:
           # Make sure we still work with the oldest versions we claim to support,
           # internal API changes can affect whether our hooks will work!
           - python_version: "3.11"
-            requests_version: "2.32.2"
+            requests_version: "2.32.4"
             urllib3_version: "2.0.2"
-            # This fails without Advocate too, the mTLS test client cert expired in 2026.
-            requests_pytest_args: >-
-              --deselect tests/test_requests.py::TestPreparingURLs::test_different_connection_pool_for_mtls_settings
 
     steps:
     - uses: actions/checkout@v7
@@ -65,4 +62,4 @@ jobs:
         PYTHONPATH: ${{ github.workspace }}
         WANTED_REQUESTS_VERSION: ${{ matrix.requests_version }}
         WANTED_URLLIB3_VERSION: ${{ matrix.urllib3_version }}
-      run: pytest -p requests_pytest_plugin ${{ matrix.requests_pytest_args }}
+      run: pytest -p requests_pytest_plugin
