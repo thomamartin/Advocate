@@ -28,7 +28,7 @@ classifiers = [
 requires-python = ">=3.11"
 dependencies = [
     "requests>=2.32,<3",
-    "urllib3>=1.26,<3",
+    "urllib3>=2.0.2,<3",
     "ifaddr>=0.2.0",
 ]
 
