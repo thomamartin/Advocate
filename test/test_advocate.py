@@ -583,15 +583,16 @@ class TestAdvocateFutures:
         with pytest.raises(TypeError):
             FuturesSession(None, 2, None, {"pool_maxsize": 1})
 
-    def test_passing_session(self):
+    @pytest.mark.parametrize("session_cls", [requests.Session, advocate.Session])
+    def test_passing_session(self, session_cls):
+        # Requests always go through the FuturesSession itself, so another
+        # session's validator would be silently ignored
         with pytest.raises(NotImplementedError):
-            FuturesSession(session=requests.Session())
+            FuturesSession(session=session_cls())
 
         sess = FuturesSession()
         with pytest.raises(NotImplementedError):
-            sess.session = requests.Session()
-
-        sess.session = advocate.Session()
+            sess.session = session_cls()
 
     def test_advocate_wrapper_futures(self):
         wrapper = RequestsAPIWrapper(validator=AddrValidator())

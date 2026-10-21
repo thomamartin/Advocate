@@ -198,6 +198,7 @@ If you can think of any improvements to the IPv6 handling, please submit an issu
 
 - `mount()`ing other adapters is disallowed to prevent Advocate's validating adapters from being clobbered.
 - Advocate does not, and might never support the use of HTTP proxies.
+- Passing a `session` to Advocate's `FuturesSession` is disallowed, configure the `FuturesSession` itself instead.
 - Proper IPv6 support is still a WIP as noted above.
 
 ## Acknowledgements
