@@ -1,6 +1,8 @@
 import ipaddress
+import pathlib
 import pickle
 import socket
+import tomllib
 from unittest.mock import MagicMock
 
 # This needs to be done before third-party imports to make sure they all use
@@ -12,7 +14,7 @@ import pytest
 import requests
 
 import advocate
-from advocate import AddrValidator
+from advocate import AddrValidator, ValidatingHTTPAdapter
 from advocate.addrvalidator import canonicalize_hostname
 from advocate.api import RequestsAPIWrapper
 from advocate.connection import advocate_getaddrinfo
@@ -79,6 +81,12 @@ def mock_determine_local_addresses(monkeypatch):
     mock = MagicMock(return_value=[ipaddress.ip_network("200.1.1.1")])
     monkeypatch.setattr("advocate.addrvalidator.determine_local_addresses", mock)
     return mock
+
+
+def test_version_matches_pyproject():
+    pyproject = pathlib.Path(__file__).parent.parent / "pyproject.toml"
+    with pyproject.open("rb") as f:
+        assert advocate.__version__ == tomllib.load(f)["project"]["version"]
 
 
 # Test our test wrappers to make sure they're testy
@@ -308,6 +316,10 @@ class TestAddrInfo:
         # These shouldn't `raise`
         self._is_addrinfo_allowed("200.1.1.1", 80, autodetect_local_addresses=True)
         advocate.addrvalidator.determine_local_addresses()
+
+    def test_determine_local_addresses(self):
+        local_addresses = advocate.addrvalidator.determine_local_addresses()
+        assert ipaddress.ip_network("127.0.0.1") in local_addresses
 
 
 @requires_canonname
@@ -559,8 +571,17 @@ class TestAdvocateFutures:
 
     def test_many_workers(self):
         sess = FuturesSession(max_workers=50)
+        # The pools should be sized for the workers without replacing our adapters
+        for prefix in ("http://", "https://"):
+            adapter = sess.get_adapter(prefix)
+            assert isinstance(adapter, ValidatingHTTPAdapter)
+            assert adapter._pool_maxsize == 50
         with pytest.raises(UnacceptableAddressException):
             sess.get("http://127.0.0.1:1/").result()
+
+    def test_extra_positional_args(self):
+        with pytest.raises(TypeError):
+            FuturesSession(None, 2, None, {"pool_maxsize": 1})
 
     def test_passing_session(self):
         with pytest.raises(NotImplementedError):

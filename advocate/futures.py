@@ -4,12 +4,11 @@ from . import Session
 
 
 class FuturesSession(requests_futures.sessions.FuturesSession, Session):
-    def __init__(self, executor=None, max_workers=2, session=None, *args,
-                 **kwargs):
+    def __init__(self, executor=None, max_workers=2, session=None, **kwargs):
         # requests-futures sizes the connection pools by reconfiguring the
         # adapters already mounted on the session, so ours stay in place.
         # Requests always go through `self`, `session` is only validated.
-        super().__init__(executor, max_workers, None, *args, **kwargs)
+        super().__init__(executor=executor, max_workers=max_workers, session=None, **kwargs)
         self.session = session
 
     @property

@@ -31,9 +31,8 @@ def determine_local_addresses():
     for adapter in ifaddr.get_adapters():
         for ip in adapter.ips:
             if ip.is_IPv6:
-                # v6 addresses are (address, flowinfo, scope_id) tuples.
-                # We can't do anything sensible with the scope here
-                addr = ip.ip[0].split("%")[0]
+                # v6 addresses are (address, flowinfo, scope_id) tuples
+                addr = ip.ip[0]
             else:
                 addr = ip.ip
             ips.append(ipaddress.ip_network(addr))

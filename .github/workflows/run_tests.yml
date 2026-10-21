@@ -33,7 +33,7 @@ jobs:
           # Make sure we still work with the oldest versions we claim to support,
           # internal API changes can affect whether our hooks will work!
           - python_version: "3.11"
-            requests_version: "2.32.0"
+            requests_version: "2.32.2"
             urllib3_version: "2.0.2"
             # This fails without Advocate too, the mTLS test client cert expired in 2026.
             requests_pytest_args: >-

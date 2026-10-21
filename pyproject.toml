@@ -27,7 +27,7 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "requests>=2.32,<3",
+    "requests>=2.32.2,<3",
     "urllib3>=2.0.2,<3",
     "ifaddr>=0.2.0",
 ]
@@ -50,6 +50,7 @@ lint = ["ruff==0.17.1"]
 
 [tool.uv.build-backend]
 module-root = ""
+source-include = ["test/**"]
 
 [tool.pytest.ini_options]
 addopts = "-p no:warnings"
