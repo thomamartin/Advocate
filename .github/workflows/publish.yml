@@ -1,0 +1,71 @@
+# Publishes advocate2 to PyPI whenever a tag is pushed.
+#
+# One-time setup, using PyPI's trusted publishing (no API token or secret needed):
+#
+# 1. On PyPI, open https://pypi.org/manage/account/publishing/ and add a
+#    "pending publisher" for GitHub with:
+#      PyPI Project Name: advocate2
+#      Owner:             thomamartin
+#      Repository name:   Advocate
+#      Workflow name:     publish.yml
+#      Environment name:  pypi
+#    A pending publisher doesn't reserve the project name, so do this shortly
+#    before the first release. Once the project exists, manage the publisher
+#    in the project's own settings under "Publishing" instead.
+# 2. On GitHub, go to the repository's Settings > Environments and create an
+#    environment called "pypi". Optionally add yourself as a required reviewer,
+#    so every upload waits for your approval, and limit it to tags.
+#
+# To release:
+# 1. Bump the version in pyproject.toml and advocate/__init__.py, then commit
+#    and push.
+# 2. Tag that commit with the version, with or without a leading "v", and push
+#    the tag:
+#      git tag v2.0.0
+#      git push origin v2.0.0
+#    Nothing is uploaded if the tag doesn't match the version in pyproject.toml.
+
+name: Publish to PyPI
+
+on:
+  push:
+    tags: ["*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - uses: astral-sh/setup-uv@v10
+    - name: Check that the tag matches the version
+      run: |
+        version="$(uv version --short)"
+        if [ "${GITHUB_REF_NAME#v}" != "${version}" ]; then
+          echo "::error::Tag ${GITHUB_REF_NAME} doesn't match version ${version} in pyproject.toml"
+          exit 1
+        fi
+    - name: Build
+      run: uv build
+    - uses: actions/upload-artifact@v7
+      with:
+        name: dist
+        path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/advocate2/
+    permissions:
+      # Required for trusted publishing
+      id-token: write
+    steps:
+    - uses: actions/download-artifact@v8
+      with:
+        name: dist
+        path: dist/
+    - uses: pypa/gh-action-pypi-publish@release/v1
