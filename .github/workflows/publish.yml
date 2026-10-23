@@ -1,0 +1,68 @@
+# Publishes advocate2 to PyPI whenever a git tag is pushed.
+#
+# One-time setup using PyPI Trusted Publishing (no API token or secret needed):
+#
+# 1. On PyPI, go to https://pypi.org/manage/account/publishing/ and add a
+#    "pending publisher" for GitHub Actions with:
+#      - PyPI Project Name: advocate2
+#      - Owner:             thomamartin
+#      - Repository name:   Advocate
+#      - Workflow name:     publish.yml
+#      - Environment name:  pypi
+#    (Once the project is created after the first release, Trusted Publishing
+#    is managed under the project's own "Publishing" settings on PyPI.)
+#
+# 2. On GitHub, go to Repository Settings -> Environments and create an
+#    environment named "pypi". Optionally configure required reviewers and
+#    deployment branch/tag rules for additional protection.
+#
+# How to release a new version:
+# 1. Update the version in both `pyproject.toml` and `advocate/__init__.py`,
+#    commit, and push.
+# 2. Create and push a matching git tag (with or without a leading "v"):
+#      git tag v2.0.0
+#      git push origin v2.0.0
+
+name: Publish to PyPI
+
+on:
+  push:
+    tags: ["*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - uses: astral-sh/setup-uv@v10
+    - name: Verify git tag matches package version
+      run: |
+        version="$(uv version --short)"
+        if [ "${GITHUB_REF_NAME#v}" != "${version}" ]; then
+          echo "::error::Tag ${GITHUB_REF_NAME} does not match version ${version} in pyproject.toml"
+          exit 1
+        fi
+    - name: Build distribution
+      run: uv build
+    - uses: actions/upload-artifact@v7
+      with:
+        name: dist
+        path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/advocate2/
+    permissions:
+      id-token: write
+    steps:
+    - uses: actions/download-artifact@v8
+      with:
+        name: dist
+        path: dist/
+    - uses: pypa/gh-action-pypi-publish@release/v1

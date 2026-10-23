@@ -1,7 +1,10 @@
-# Advocate
+# Advocate2
 
-![Python versions](https://img.shields.io/pypi/pyversions/advocate.svg)
-[![PyPI version](https://img.shields.io/pypi/v/advocate.svg)](https://pypi.org/project/advocate/)
+![Python versions](https://img.shields.io/pypi/pyversions/advocate2.svg)
+[![PyPI version](https://img.shields.io/pypi/v/advocate2.svg)](https://pypi.org/project/advocate2/)
+
+**Advocate2 is a maintained fork of [Advocate](https://github.com/JordanMilne/Advocate).**
+It is a drop-in replacement: install `advocate2` and continue using `import advocate`.
 
 Advocate is a set of tools based around the [requests](https://github.com/psf/requests) library for safely making
 HTTP requests on behalf of a third party. Specifically, it aims to prevent 
@@ -12,13 +15,15 @@ Advocate was inspired by [fin1te's SafeCurl project](https://github.com/fin1te/s
 ## Installation
 
 ```bash
-pip install advocate
+pip install advocate2
 ```
+
+Since `advocate2` provides the `advocate` module, uninstall `advocate` first if you are migrating from the original package.
 
 To include `requests-futures` support:
 
 ```bash
-pip install advocate[futures]
+pip install advocate2[futures]
 ```
 
 Advocate is officially supported on Python 3.11+.
