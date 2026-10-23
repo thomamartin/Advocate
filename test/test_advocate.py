@@ -1,21 +1,21 @@
-from __future__ import division
-
 import ipaddress
+import pathlib
 import pickle
 import socket
-import unittest
+import tomllib
+from unittest.mock import MagicMock
 
 # This needs to be done before third-party imports to make sure they all use
 # our wrapped socket class, especially in case of subclasses.
 from .monkeypatching import CheckedSocket, DisallowedConnectException
+
 socket.socket = CheckedSocket
 
-from mock import patch
+import pytest
 import requests
-import requests_mock
 
 import advocate
-from advocate import AddrValidator
+from advocate import AddrValidator, ValidatingHTTPAdapter
 from advocate.addrvalidator import canonicalize_hostname
 from advocate.api import RequestsAPIWrapper
 from advocate.connection import advocate_getaddrinfo
@@ -33,9 +33,13 @@ from advocate.futures import FuturesSession
 AddrValidator.DEFAULT_PORT_WHITELIST.add(1)
 
 RequestsAPIWrapper.SUPPORT_WRAPPER_PICKLING = True
-global_wrapper = RequestsAPIWrapper(validator=AddrValidator(ip_whitelist={
-    ipaddress.ip_network("127.0.0.1"),
-}))
+global_wrapper = RequestsAPIWrapper(
+    validator=AddrValidator(
+        ip_whitelist={
+            ipaddress.ip_network("127.0.0.1"),
+        }
+    )
+)
 RequestsAPIWrapper.SUPPORT_WRAPPER_PICKLING = False
 
 
@@ -50,9 +54,18 @@ def canonname_supported():
     travis-ci.org's Python 3 env doesn't seem to support it, so don't try
     any of the test that rely on it.
     """
-    addrinfo = advocate_getaddrinfo("example.com", 0, get_canonname=True)
-    assert addrinfo
-    return addrinfo[0][3] == b"example.com"
+    try:
+        addrinfo = advocate_getaddrinfo("example.com", 0, get_canonname=True)
+        assert addrinfo
+        return addrinfo[0][3] == "example.com"
+    except (socket.gaierror, OSError):
+        return False
+
+
+requires_canonname = pytest.mark.skipif(
+    not canonname_supported(),
+    reason="Nameserver doesn't support AI_CANONNAME, skipping hostname tests",
+)
 
 
 def permissive_validator(**kwargs):
@@ -71,19 +84,30 @@ def permissive_validator(**kwargs):
     return AddrValidator(**default_options)
 
 
+@pytest.fixture
+def mock_determine_local_addresses(monkeypatch):
+    mock = MagicMock(return_value=[ipaddress.ip_network("200.1.1.1")])
+    monkeypatch.setattr("advocate.addrvalidator.determine_local_addresses", mock)
+    return mock
+
+
+def test_version_matches_pyproject():
+    pyproject = pathlib.Path(__file__).parent.parent / "pyproject.toml"
+    with pyproject.open("rb") as f:
+        assert advocate.__version__ == tomllib.load(f)["project"]["version"]
+
+
 # Test our test wrappers to make sure they're testy
-class TestWrapperTests(unittest.TestCase):
+class TestWrapperTests:
     def test_unsafe_connect_raises(self):
-        self.assertRaises(
-            DisallowedConnectException,
-            requests.get, "http://example.org/"
-        )
+        with pytest.raises(DisallowedConnectException):
+            requests.get("http://example.org/")
 
 
-class ValidateIPTests(unittest.TestCase):
+class TestValidateIP:
     def _test_ip_kind_blocked(self, ip, **kwargs):
         validator = permissive_validator(**kwargs)
-        self.assertFalse(validator.is_ip_allowed(ip))
+        assert not validator.is_ip_allowed(ip)
 
     def test_manual_ip_blacklist(self):
         """Test manually blacklisting based on IP"""
@@ -95,68 +119,60 @@ class ValidateIPTests(unittest.TestCase):
                 ipaddress.ip_network("::1"),
             ),
         )
-        self.assertFalse(validator.is_ip_allowed("132.0.5.1"))
-        self.assertFalse(validator.is_ip_allowed("152.254.90.1"))
-        self.assertTrue(validator.is_ip_allowed("178.254.90.1"))
-        self.assertFalse(validator.is_ip_allowed("::1"))
+        assert not validator.is_ip_allowed("132.0.5.1")
+        assert not validator.is_ip_allowed("152.254.90.1")
+        assert validator.is_ip_allowed("178.254.90.1")
+        assert not validator.is_ip_allowed("::1")
         # Google, found via `dig google.com AAAA`
-        self.assertTrue(validator.is_ip_allowed("2607:f8b0:400a:807::200e"))
+        assert validator.is_ip_allowed("2607:f8b0:400a:807::200e")
 
     def test_ip_whitelist(self):
         """Test manually whitelisting based on IP"""
         validator = AddrValidator(
-            ip_whitelist=(
-                ipaddress.ip_network("127.0.0.1"),
-            ),
+            ip_whitelist=(ipaddress.ip_network("127.0.0.1"),),
         )
-        self.assertTrue(validator.is_ip_allowed("127.0.0.1"))
+        assert validator.is_ip_allowed("127.0.0.1")
 
     def test_ip_whitelist_blacklist_conflict(self):
         """Manual whitelist should take precedence over manual blacklist"""
         validator = AddrValidator(
-            ip_whitelist=(
-                ipaddress.ip_network("127.0.0.1"),
-            ),
-            ip_blacklist=(
-                ipaddress.ip_network("127.0.0.1"),
-            ),
+            ip_whitelist=(ipaddress.ip_network("127.0.0.1"),),
+            ip_blacklist=(ipaddress.ip_network("127.0.0.1"),),
         )
-        self.assertTrue(validator.is_ip_allowed("127.0.0.1"))
+        assert validator.is_ip_allowed("127.0.0.1")
 
-    @unittest.skip("takes half an hour or so to run")
+    @pytest.mark.skip(reason="takes half an hour or so to run")
     def test_safecurl_blacklist(self):
         """Test that we at least disallow everything SafeCurl does"""
         # All IPs that SafeCurl would disallow
-        bad_netblocks = (ipaddress.ip_network(x) for x in (
-            '0.0.0.0/8',
-            '10.0.0.0/8',
-            '100.64.0.0/10',
-            '127.0.0.0/8',
-            '169.254.0.0/16',
-            '172.16.0.0/12',
-            '192.0.0.0/29',
-            '192.0.2.0/24',
-            '192.88.99.0/24',
-            '192.168.0.0/16',
-            '198.18.0.0/15',
-            '198.51.100.0/24',
-            '203.0.113.0/24',
-            '224.0.0.0/4',
-            '240.0.0.0/4'
-        ))
-        i = 0
+        bad_netblocks = (
+            ipaddress.ip_network(x)
+            for x in (
+                "0.0.0.0/8",
+                "10.0.0.0/8",
+                "100.64.0.0/10",
+                "127.0.0.0/8",
+                "169.254.0.0/16",
+                "172.16.0.0/12",
+                "192.0.0.0/29",
+                "192.0.2.0/24",
+                "192.88.99.0/24",
+                "192.168.0.0/16",
+                "198.18.0.0/15",
+                "198.51.100.0/24",
+                "203.0.113.0/24",
+                "224.0.0.0/4",
+                "240.0.0.0/4",
+            )
+        )
         validator = AddrValidator()
         for bad_netblock in bad_netblocks:
             num_ips = bad_netblock.num_addresses
             # Don't test *every* IP in large netblocks
             step_size = int(min(max(num_ips / 255, 1), 128))
             for ip_idx in range(0, num_ips, step_size):
-                i += 1
                 bad_ip = bad_netblock[ip_idx]
-                bad_ip_allowed = validator.is_ip_allowed(bad_ip)
-                if bad_ip_allowed:
-                    print(i, bad_ip)
-                self.assertFalse(bad_ip_allowed)
+                assert not validator.is_ip_allowed(bad_ip), bad_ip
 
     # TODO: something like the above for IPv6?
 
@@ -219,15 +235,11 @@ class ValidateIPTests(unittest.TestCase):
 
     def test_parsed(self):
         validator = permissive_validator()
-        self.assertFalse(validator.is_ip_allowed(
-            ipaddress.ip_address("0.0.0.0")
-        ))
-        self.assertTrue(validator.is_ip_allowed(
-            ipaddress.ip_address("144.1.1.1")
-        ))
+        assert not validator.is_ip_allowed(ipaddress.ip_address("0.0.0.0"))
+        assert validator.is_ip_allowed(ipaddress.ip_address("144.1.1.1"))
 
 
-class AddrInfoTests(unittest.TestCase):
+class TestAddrInfo:
     def _is_addrinfo_allowed(self, host, port, **kwargs):
         validator = permissive_validator(**kwargs)
         allowed = False
@@ -237,113 +249,90 @@ class AddrInfoTests(unittest.TestCase):
         return allowed
 
     def test_simple(self):
-        self.assertFalse(
-            self._is_addrinfo_allowed("192.168.0.1", 80)
-        )
+        assert not self._is_addrinfo_allowed("192.168.0.1", 80)
 
     def test_malformed_addrinfo(self):
         # Alright, the addrinfo format is probably never going to change,
         # but *what if it did?*
         vl = permissive_validator()
         addrinfo = advocate_getaddrinfo("example.com", 80)[0] + (1,)
-        self.assertRaises(Exception, lambda: vl.is_addrinfo_allowed(addrinfo))
+        with pytest.raises((AssertionError, ValueError)):
+            vl.is_addrinfo_allowed(addrinfo)
 
     def test_unexpected_proto(self):
         # What if addrinfo returns info about a protocol we don't understand?
         vl = permissive_validator()
         addrinfo = list(advocate_getaddrinfo("example.com", 80)[0])
         addrinfo[4] = addrinfo[4] + (1,)
-        self.assertRaises(Exception, lambda: vl.is_addrinfo_allowed(addrinfo))
+        with pytest.raises(ValueError):
+            vl.is_addrinfo_allowed(addrinfo)
 
     def test_default_port_whitelist(self):
-        self.assertTrue(
-            self._is_addrinfo_allowed("200.1.1.1", 8080)
-        )
-        self.assertTrue(
-            self._is_addrinfo_allowed("200.1.1.1", 80)
-        )
-        self.assertFalse(
-            self._is_addrinfo_allowed("200.1.1.1", 99)
-        )
+        assert self._is_addrinfo_allowed("200.1.1.1", 8080)
+        assert self._is_addrinfo_allowed("200.1.1.1", 80)
+        assert not self._is_addrinfo_allowed("200.1.1.1", 99)
 
     def test_port_whitelist(self):
         wl = (80, 10)
-        self.assertTrue(
-            self._is_addrinfo_allowed("200.1.1.1", 80, port_whitelist=wl)
-        )
-        self.assertTrue(
-            self._is_addrinfo_allowed("200.1.1.1", 10, port_whitelist=wl)
-        )
-        self.assertFalse(
-            self._is_addrinfo_allowed("200.1.1.1", 99, port_whitelist=wl)
-        )
+        assert self._is_addrinfo_allowed("200.1.1.1", 80, port_whitelist=wl)
+        assert self._is_addrinfo_allowed("200.1.1.1", 10, port_whitelist=wl)
+        assert not self._is_addrinfo_allowed("200.1.1.1", 99, port_whitelist=wl)
 
     def test_port_blacklist(self):
         bl = (80, 10)
-        self.assertFalse(
-            self._is_addrinfo_allowed("200.1.1.1", 80, port_blacklist=bl)
-        )
-        self.assertFalse(
-            self._is_addrinfo_allowed("200.1.1.1", 10, port_blacklist=bl)
-        )
-        self.assertTrue(
-            self._is_addrinfo_allowed("200.1.1.1", 99, port_blacklist=bl)
-        )
+        assert not self._is_addrinfo_allowed("200.1.1.1", 80, port_blacklist=bl)
+        assert not self._is_addrinfo_allowed("200.1.1.1", 10, port_blacklist=bl)
+        assert self._is_addrinfo_allowed("200.1.1.1", 99, port_blacklist=bl)
 
-    @patch("advocate.addrvalidator.determine_local_addresses")
     def test_local_address_handling(self, mock_determine_local_addresses):
-        fake_addresses = [ipaddress.ip_network("200.1.1.1")]
-        mock_determine_local_addresses.return_value = fake_addresses
-
-        self.assertFalse(self._is_addrinfo_allowed(
+        assert not self._is_addrinfo_allowed(
             "200.1.1.1",
             80,
-            autodetect_local_addresses=True
-        ))
+            autodetect_local_addresses=True,
+        )
         # Check that `is_ip_allowed` didn't make its own call to determine
         # local addresses
         mock_determine_local_addresses.assert_called_once_with()
         mock_determine_local_addresses.reset_mock()
 
-        self.assertTrue(self._is_addrinfo_allowed(
+        assert self._is_addrinfo_allowed(
             "200.1.1.1",
             80,
             autodetect_local_addresses=False,
-        ))
+        )
         mock_determine_local_addresses.assert_not_called()
 
-    def test_netifaces_presence_optional(self):
-        # Advocate should still work without netifaces, but only if you've specifically
+    def test_ifaddr_presence_optional(self, monkeypatch):
+        # Advocate should still work without ifaddr, but only if you've specifically
         # said you don't care about checking against local interface addresses.
-        with patch("advocate.addrvalidator.HAVE_NETIFACES", False):
-            with self.assertRaises(ConfigException):
+        with monkeypatch.context() as m:
+            m.setattr("advocate.addrvalidator.HAVE_IFADDR", False)
+            with pytest.raises(ConfigException):
                 self._is_addrinfo_allowed("200.1.1.1", 80, autodetect_local_addresses=True)
-            with self.assertRaises(ConfigException):
+            with pytest.raises(ConfigException):
                 advocate.addrvalidator.determine_local_addresses()
             # Should be fine if you specifically asked to not look at the local addrs
-            self.assertTrue(self._is_addrinfo_allowed(
+            assert self._is_addrinfo_allowed(
                 "200.1.1.1",
                 80,
                 autodetect_local_addresses=False,
-            ))
+            )
 
         # These shouldn't `raise`
         self._is_addrinfo_allowed("200.1.1.1", 80, autodetect_local_addresses=True)
         advocate.addrvalidator.determine_local_addresses()
 
+    def test_determine_local_addresses(self):
+        local_addresses = advocate.addrvalidator.determine_local_addresses()
+        assert ipaddress.ip_network("127.0.0.1") in local_addresses
 
-@unittest.skipIf(
-    not canonname_supported(),
-    "Nameserver doesn't support AI_CANONNAME, skipping hostname tests"
-)
-class HostnameTests(unittest.TestCase):
-    def setUp(self):
-        self._canonname_supported = canonname_supported()
 
+@requires_canonname
+class TestHostname:
     def _is_hostname_allowed(self, host, fake_lookup=False, **kwargs):
         validator = permissive_validator(**kwargs)
         if fake_lookup:
-            results = [(2, 1, 6, canonicalize_hostname(host).encode("utf8"), ('1.2.3.4', 80))]
+            results = [(2, 1, 6, canonicalize_hostname(host), ("1.2.3.4", 80))]
         else:
             results = advocate_getaddrinfo(host, 80, get_canonname=True)
         for res in results:
@@ -352,46 +341,46 @@ class HostnameTests(unittest.TestCase):
         return False
 
     def test_no_blacklist(self):
-        self.assertTrue(self._is_hostname_allowed("example.com"))
+        assert self._is_hostname_allowed("example.com")
 
     def test_idn(self):
         # test some basic globs
-        self.assertFalse(self._is_hostname_allowed(
-            u"中国.example.org",
+        assert not self._is_hostname_allowed(
+            "中国.example.org",
             fake_lookup=True,
-            hostname_blacklist={"*.org"}
-        ))
+            hostname_blacklist={"*.org"},
+        )
         # case-insensitive, please
-        self.assertFalse(self._is_hostname_allowed(
-            u"中国.example.oRg",
+        assert not self._is_hostname_allowed(
+            "中国.example.oRg",
             fake_lookup=True,
-            hostname_blacklist={"*.Org"}
-        ))
-        self.assertFalse(self._is_hostname_allowed(
-            u"中国.example.org",
+            hostname_blacklist={"*.Org"},
+        )
+        assert not self._is_hostname_allowed(
+            "中国.example.org",
             fake_lookup=True,
-            hostname_blacklist={"xn--fiqs8s.*.org"}
-        ))
-        self.assertFalse(self._is_hostname_allowed(
+            hostname_blacklist={"xn--fiqs8s.*.org"},
+        )
+        assert not self._is_hostname_allowed(
             "xn--fiqs8s.example.org",
             fake_lookup=True,
-            hostname_blacklist={u"中国.*.org"}
-        ))
-        self.assertTrue(self._is_hostname_allowed(
-            u"example.org",
+            hostname_blacklist={"中国.*.org"},
+        )
+        assert self._is_hostname_allowed(
+            "example.org",
             fake_lookup=True,
-            hostname_blacklist={u"中国.*.org"}
-        ))
-        self.assertTrue(self._is_hostname_allowed(
-            u"example.com",
+            hostname_blacklist={"中国.*.org"},
+        )
+        assert self._is_hostname_allowed(
+            "example.com",
             fake_lookup=True,
-            hostname_blacklist={u"中国.*.org"}
-        ))
-        self.assertTrue(self._is_hostname_allowed(
-            u"foo.example.org",
+            hostname_blacklist={"中国.*.org"},
+        )
+        assert self._is_hostname_allowed(
+            "foo.example.org",
             fake_lookup=True,
-            hostname_blacklist={u"中国.*.org"}
-        ))
+            hostname_blacklist={"中国.*.org"},
+        )
 
     def test_missing_canonname(self):
         addrinfo = socket.getaddrinfo(
@@ -400,29 +389,28 @@ class HostnameTests(unittest.TestCase):
             0,
             socket.SOCK_STREAM,
         )
-        self.assertTrue(addrinfo)
+        assert addrinfo
 
         # Should throw an error if we're using hostname blacklisting and the
         # addrinfo record we passed in doesn't have a canonname
         validator = permissive_validator(hostname_blacklist={"foo"})
-        self.assertRaises(
-            NameserverException,
-            validator.is_addrinfo_allowed, addrinfo[0]
-        )
+        with pytest.raises(NameserverException):
+            validator.is_addrinfo_allowed(addrinfo[0])
 
     def test_embedded_null(self):
         vl = permissive_validator(hostname_blacklist={"*.baz.com"})
         # Things get a little screwy with embedded nulls. Try to emulate any
         # possible null termination when checking if the hostname is allowed.
-        self.assertFalse(vl.is_hostname_allowed("foo.baz.com\x00.example.com"))
-        self.assertFalse(vl.is_hostname_allowed("foo.example.com\x00.baz.com"))
-        self.assertFalse(vl.is_hostname_allowed(u"foo.baz.com\x00.example.com"))
-        self.assertFalse(vl.is_hostname_allowed(u"foo.example.com\x00.baz.com"))
+        assert not vl.is_hostname_allowed("foo.baz.com\x00.example.com")
+        assert not vl.is_hostname_allowed("foo.example.com\x00.baz.com")
 
 
-class ConnectionPoolingTests(unittest.TestCase):
-    @patch("advocate.connection.ValidatingHTTPConnection._new_conn")
-    def test_connection_reuse(self, mock_new_conn):
+class TestConnectionPooling:
+    def test_connection_reuse(self, monkeypatch):
+        mock_new_conn = MagicMock()
+        monkeypatch.setattr(
+            "advocate.connection.ValidatingHTTPConnection._new_conn", mock_new_conn
+        )
         # Just because you can use an existing connection doesn't mean you
         # should. The disadvantage of us working at the socket level means that
         # we get bitten if a connection pool is shared between regular requests
@@ -434,190 +422,139 @@ class ConnectionPoolingTests(unittest.TestCase):
         mock_new_conn.assert_not_called()
         try:
             advocate.get("http://httpbin.org/")
-        except:
+        except Exception:
             pass
         # Requests may retry several times, but our mock doesn't return a real
         # socket. Just check that it tried to create one.
         mock_new_conn.assert_any_call()
 
 
-class AdvocateWrapperTests(unittest.TestCase):
+class TestAdvocateWrapper:
     def test_get(self):
-        self.assertEqual(advocate.get("http://example.com").status_code, 200)
-        self.assertEqual(advocate.get("https://example.com").status_code, 200)
+        assert advocate.get("http://example.com").status_code == 200
+        assert advocate.get("https://example.com").status_code == 200
 
     def test_validator(self):
-        self.assertRaises(
-            UnacceptableAddressException,
-            advocate.get, "http://127.0.0.1/"
-        )
-        self.assertRaises(
-            UnacceptableAddressException,
-            advocate.get, "http://localhost/"
-        )
-        self.assertRaises(
-            UnacceptableAddressException,
-            advocate.get, "https://localhost/"
-        )
+        with pytest.raises(UnacceptableAddressException):
+            advocate.get("http://127.0.0.1/")
+        with pytest.raises(UnacceptableAddressException):
+            advocate.get("http://localhost/")
+        with pytest.raises(UnacceptableAddressException):
+            advocate.get("https://localhost/")
 
-    @unittest.skipIf(
-        not canonname_supported(),
-        "Nameserver doesn't support AI_CANONNAME, skipping hostname tests"
-    )
+    @requires_canonname
     def test_blacklist_hostname(self):
-        self.assertRaises(
-            UnacceptableAddressException,
-            advocate.get,
-            "https://google.com/",
-            validator=AddrValidator(hostname_blacklist={"google.com"})
-        )
+        with pytest.raises(UnacceptableAddressException):
+            advocate.get(
+                "https://google.com/",
+                validator=AddrValidator(hostname_blacklist={"google.com"}),
+            )
 
-    # Disabled for now because the redirection endpoint appears to be broken.
-    @unittest.skip
+    @pytest.mark.skip(reason="the redirection endpoint appears to be broken")
     def test_redirect(self):
         # Make sure httpbin even works
         test_url = "http://httpbin.org/status/204"
-        self.assertEqual(advocate.get(test_url).status_code, 204)
+        assert advocate.get(test_url).status_code == 204
 
         redir_url = "http://httpbin.org/redirect-to?url=http://127.0.0.1/"
-        self.assertRaises(
-            UnacceptableAddressException,
-            advocate.get, redir_url
-        )
+        with pytest.raises(UnacceptableAddressException):
+            advocate.get(redir_url)
 
     def test_mount_disabled(self):
         sess = advocate.Session()
-        self.assertRaises(
-            MountDisabledException,
-            sess.mount,
-            "foo://",
-            None,
-        )
+        with pytest.raises(MountDisabledException):
+            sess.mount("foo://", None)
 
     def test_advocate_requests_api_wrapper(self):
         wrapper = RequestsAPIWrapper(validator=AddrValidator())
-        local_validator = AddrValidator(ip_whitelist={
-            ipaddress.ip_network("127.0.0.1"),
-        })
+        local_validator = AddrValidator(
+            ip_whitelist={
+                ipaddress.ip_network("127.0.0.1"),
+            }
+        )
         local_wrapper = RequestsAPIWrapper(validator=local_validator)
 
-        self.assertRaises(
-            UnacceptableAddressException,
-            wrapper.get, "http://127.0.0.1:1/"
-        )
-
-        with self.assertRaises(Exception) as cm:
-            local_wrapper.get("http://127.0.0.1:1/")
+        with pytest.raises(UnacceptableAddressException):
+            wrapper.get("http://127.0.0.1:1/")
         # Check that we got a connection exception instead of a validation one
-        # This might be either exception depending on the requests version
-        self.assertRegexpMatches(
-            cm.exception.__class__.__name__,
-            r"\A(Connection|Protocol)Error",
-        )
-        self.assertRaises(
-            UnacceptableAddressException,
-            wrapper.get, "http://localhost:1/"
-        )
-        self.assertRaises(
-            UnacceptableAddressException,
-            wrapper.get, "https://localhost:1/"
-        )
+        with pytest.raises(requests.ConnectionError):
+            local_wrapper.get("http://127.0.0.1:1/")
+        with pytest.raises(UnacceptableAddressException):
+            wrapper.get("http://localhost:1/")
+        with pytest.raises(UnacceptableAddressException):
+            wrapper.get("https://localhost:1/")
 
-    def test_advocate_default_validator_replaceable(self):
+    def test_advocate_default_validator_replaceable(self, monkeypatch):
         new_validator = AddrValidator(hostname_blacklist=["example.org"])
-        with patch("advocate.api.Session.DEFAULT_VALIDATOR", new_validator):
-            with self.assertRaises(UnacceptableAddressException):
-                advocate.get("http://example.org")
+        monkeypatch.setattr("advocate.api.Session.DEFAULT_VALIDATOR", new_validator)
+        with pytest.raises(UnacceptableAddressException):
+            advocate.get("http://example.org")
 
     def test_wrapper_session_pickle(self):
         # Make sure the validator still works after a pickle round-trip
         sess_instance = pickle.loads(pickle.dumps(global_wrapper.Session()))
 
-        with self.assertRaises(Exception) as cm:
+        with pytest.raises(requests.ConnectionError):
             sess_instance.get("http://127.0.0.1:1/")
-        self.assertRegexpMatches(
-            cm.exception.__class__.__name__,
-            r"\A(Connection|Protocol)Error",
-        )
-        self.assertRaises(
-            UnacceptableAddressException,
-            sess_instance.get, "http://127.0.1.1:1/"
-        )
+        with pytest.raises(UnacceptableAddressException):
+            sess_instance.get("http://127.0.1.1:1/")
 
     def test_wrapper_session_subclass(self):
         # Make sure pickle doesn't explode if we try to pickle a subclass
         # of `global_wrapper.Session`
         def _check_instance(instance):
-            self.assertEqual(instance.good_method(), "foo")
+            assert instance.good_method() == "foo"
 
-            with self.assertRaises(Exception) as cm:
+            with pytest.raises(requests.ConnectionError):
                 instance.get("http://127.0.0.1:1/")
-            self.assertRegexpMatches(
-                cm.exception.__class__.__name__,
-                r"\A(Connection|Protocol)Error",
-            )
-            self.assertRaises(
-                UnacceptableAddressException,
-                instance.get, "http://127.0.1.1:1/"
-            )
+            with pytest.raises(UnacceptableAddressException):
+                instance.get("http://127.0.1.1:1/")
+
         sess = _WrapperSubclass()
         _check_instance(sess)
         sess_unpickled = pickle.loads(pickle.dumps(sess))
         _check_instance(sess_unpickled)
 
-
-
-    @unittest.skipIf(
-        not canonname_supported(),
-        "Nameserver doesn't support AI_CANONNAME, skipping hostname tests"
-    )
+    @requires_canonname
     def test_advocate_requests_api_wrapper_hostnames(self):
-        wrapper = RequestsAPIWrapper(validator=AddrValidator(
-            hostname_blacklist={"google.com"},
-        ))
-        self.assertRaises(
-            UnacceptableAddressException,
-            wrapper.get,
-            "https://google.com/",
+        wrapper = RequestsAPIWrapper(
+            validator=AddrValidator(
+                hostname_blacklist={"google.com"},
+            )
         )
+        with pytest.raises(UnacceptableAddressException):
+            wrapper.get("https://google.com/")
 
-    def test_advocate_requests_api_wrapper_req_methods(self):
+    @pytest.mark.parametrize(
+        "method_name", ["get", "options", "head", "post", "put", "patch", "delete"]
+    )
+    def test_advocate_requests_api_wrapper_req_methods(self, method_name, requests_mock):
         # Make sure all the convenience methods make requests with the correct
         # methods
         wrapper = RequestsAPIWrapper(AddrValidator())
-
-        request_methods = (
-            "get", "options", "head", "post", "put", "patch", "delete"
-        )
-        for method_name in request_methods:
-            with requests_mock.mock() as request_mock:
-                # This will fail if the request expected by `request_mock`
-                # isn't sent when calling the wrapper method
-                request_mock.request(method_name, "http://example.com/foo")
-                getattr(wrapper, method_name)("http://example.com/foo")
+        # This will fail if the request expected by `requests_mock`
+        # isn't sent when calling the wrapper method
+        requests_mock.request(method_name, "http://example.com/foo")
+        getattr(wrapper, method_name)("http://example.com/foo")
 
     def test_wrapper_getattr_fallback(self):
         # Make sure wrappers include everything in Advocate's `__init__.py`
         wrapper = RequestsAPIWrapper(AddrValidator())
-        self.assertIsNotNone(wrapper.PreparedRequest)
+        assert wrapper.PreparedRequest is not None
 
     def test_proxy_attempt_throws(self):
         # Advocate can't do anything useful when you use a proxy, the proxy
         # is the one that ultimately makes the connection
-        self.assertRaises(
-            NotImplementedError,
-            advocate.get, "http://example.org/",
-            proxies={
-                "http": "http://example.org:3128",
-                "https": "http://example.org:1080",
-            },
-        )
+        with pytest.raises(NotImplementedError):
+            advocate.get(
+                "http://example.org/",
+                proxies={
+                    "http": "http://example.org:3128",
+                    "https": "http://example.org:1080",
+                },
+            )
 
-    @patch("advocate.addrvalidator.determine_local_addresses")
     def test_connect_without_local_addresses(self, mock_determine_local_addresses):
-        fake_addresses = [ipaddress.ip_network("200.1.1.1")]
-        mock_determine_local_addresses.return_value = fake_addresses
-
         validator = permissive_validator(autodetect_local_addresses=True)
         advocate.get("http://example.com/", validator=validator)
         # Check that `is_ip_allowed` didn't make its own call to determine
@@ -630,70 +567,63 @@ class AdvocateWrapperTests(unittest.TestCase):
         mock_determine_local_addresses.assert_not_called()
 
 
-class AdvocateFuturesTest(unittest.TestCase):
+class TestAdvocateFutures:
     def test_get(self):
         sess = FuturesSession()
-        assert 200 == sess.get("http://example.org/").result().status_code
+        assert sess.get("http://example.org/").result().status_code == 200
 
     def test_custom_validator(self):
         validator = AddrValidator(hostname_blacklist={"example.org"})
         sess = FuturesSession(validator=validator)
-        self.assertRaises(
-            UnacceptableAddressException,
-            lambda: sess.get("http://example.org").result()
-        )
+        with pytest.raises(UnacceptableAddressException):
+            sess.get("http://example.org").result()
 
     def test_many_workers(self):
         sess = FuturesSession(max_workers=50)
-        self.assertRaises(
-            UnacceptableAddressException,
-            lambda: sess.get("http://127.0.0.1:1/").result()
-        )
+        # The pools should be sized for the workers without replacing our adapters
+        for prefix in ("http://", "https://"):
+            adapter = sess.get_adapter(prefix)
+            assert isinstance(adapter, ValidatingHTTPAdapter)
+            assert adapter._pool_maxsize == 50
+        with pytest.raises(UnacceptableAddressException):
+            sess.get("http://127.0.0.1:1/").result()
 
-    def test_passing_session(self):
-        try:
-            FuturesSession(session=requests.Session())
-            assert False
-        except NotImplementedError:
-            pass
+    def test_extra_positional_args(self):
+        with pytest.raises(TypeError):
+            FuturesSession(None, 2, None, {"pool_maxsize": 1})
+
+    @pytest.mark.parametrize("session_cls", [requests.Session, advocate.Session])
+    def test_passing_session(self, session_cls):
+        # Requests always go through the FuturesSession itself, so another
+        # session's validator would be silently ignored
+        with pytest.raises(NotImplementedError):
+            FuturesSession(session=session_cls())
 
         sess = FuturesSession()
-        try:
-            sess.session = requests.Session()
-            assert False
-        except NotImplementedError:
-            pass
-
-        sess.session = advocate.Session()
+        with pytest.raises(NotImplementedError):
+            sess.session = session_cls()
 
     def test_advocate_wrapper_futures(self):
         wrapper = RequestsAPIWrapper(validator=AddrValidator())
-        local_validator = AddrValidator(ip_whitelist={
-            ipaddress.ip_network("127.0.0.1"),
-        })
+        local_validator = AddrValidator(
+            ip_whitelist={
+                ipaddress.ip_network("127.0.0.1"),
+            }
+        )
         local_wrapper = RequestsAPIWrapper(validator=local_validator)
 
-        with self.assertRaises(UnacceptableAddressException):
+        with pytest.raises(UnacceptableAddressException):
             sess = wrapper.FuturesSession()
             sess.get("http://127.0.0.1/").result()
 
-        with self.assertRaises(Exception) as cm:
+        # Check that we got a connection exception instead of a validation one
+        with pytest.raises(requests.ConnectionError):
             sess = local_wrapper.FuturesSession()
             sess.get("http://127.0.0.1:1/").result()
-        # Check that we got a connection exception instead of a validation one
-        # This might be either exception depending on the requests version
-        self.assertRegexpMatches(
-            cm.exception.__class__.__name__,
-            r"\A(Connection|Protocol)Error",
-        )
 
-        with self.assertRaises(UnacceptableAddressException):
+        with pytest.raises(UnacceptableAddressException):
             sess = wrapper.FuturesSession()
             sess.get("http://localhost:1/").result()
-        with self.assertRaises(UnacceptableAddressException):
+        with pytest.raises(UnacceptableAddressException):
             sess = wrapper.FuturesSession()
             sess.get("https://localhost:1/").result()
-
-
-if __name__ == '__main__':
-    unittest.main()

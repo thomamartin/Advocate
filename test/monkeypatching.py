@@ -33,7 +33,6 @@ class CheckedSocket(socket.socket):
 
     def connect(self, *args, **kwargs):
         if self._checks_enabled:
-
             stack = traceback.extract_stack()
             if not any(self._check_frame_allowed(frame) for frame in stack):
                 raise DisallowedConnectException("calling socket.connect() unsafely!")

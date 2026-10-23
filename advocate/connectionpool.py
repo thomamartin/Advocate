@@ -6,17 +6,17 @@ from .connection import (
 )
 
 # Don't silently break if the private API changes across urllib3 versions
-assert(hasattr(HTTPConnectionPool, 'ConnectionCls'))
-assert(hasattr(HTTPSConnectionPool, 'ConnectionCls'))
-assert(hasattr(HTTPConnectionPool, 'scheme'))
-assert(hasattr(HTTPSConnectionPool, 'scheme'))
+assert hasattr(HTTPConnectionPool, "ConnectionCls")
+assert hasattr(HTTPSConnectionPool, "ConnectionCls")
+assert hasattr(HTTPConnectionPool, "scheme")
+assert hasattr(HTTPSConnectionPool, "scheme")
 
 
 class ValidatingHTTPConnectionPool(HTTPConnectionPool):
-    scheme = 'http'
+    scheme = "http"
     ConnectionCls = ValidatingHTTPConnection
 
 
 class ValidatingHTTPSConnectionPool(HTTPSConnectionPool):
-    scheme = 'https'
+    scheme = "https"
     ConnectionCls = ValidatingHTTPSConnection

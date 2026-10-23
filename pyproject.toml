@@ -1,0 +1,89 @@
+[build-system]
+requires = ["uv_build>=0.13.3,<0.14.0"]
+build-backend = "uv_build"
+
+[project]
+name = "advocate"
+version = "2.0.0"
+description = "A wrapper around the requests library for safely making HTTP requests on behalf of a third party"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Jordan Milne", email = "advocate@saynotolinux.com" }]
+keywords = ["http", "requests", "security", "ssrf", "proxy", "rebinding", "advocate"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Internet :: WWW/HTTP",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.32.4,<3",
+    "urllib3>=2.0.2,<3",
+    "ifaddr>=0.2.0",
+]
+
+[project.optional-dependencies]
+futures = ["requests-futures>=1.1.0"]
+
+[project.urls]
+Homepage = "https://github.com/JordanMilne/Advocate"
+Issues = "https://github.com/JordanMilne/Advocate/issues"
+
+[dependency-groups]
+test = [
+    "pytest>=8",
+    "pytest-cov",
+    "requests-futures>=1.1.0",
+    "requests-mock",
+]
+lint = [
+    "pre-commit>=4",
+    "ruff>=0.9.0",
+]
+
+[tool.uv.build-backend]
+module-name = "advocate"
+module-root = ""
+source-include = ["test/**"]
+
+[tool.pytest.ini_options]
+addopts = "-p no:warnings"
+testpaths = ["test"]
+
+[tool.coverage.run]
+source = ["advocate"]
+
+[tool.coverage.report]
+exclude_also = [
+    # Don't complain about missing debug-only code:
+    "def __repr__",
+    "if self\\.debug",
+    # Don't complain if tests don't hit defensive assertion code:
+    "raise AssertionError",
+    "raise NotImplementedError",
+    # Don't complain if non-runnable code isn't run:
+    "if 0:",
+    "if __name__ == .__main__.:",
+]
+ignore_errors = true
+
+[tool.ruff]
+line-length = 95
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "W", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Re-exports for the public API
+"advocate/__init__.py" = ["F401", "F403"]
+# CheckedSocket has to be patched in before any third-party imports
+"test/test_advocate.py" = ["E402"]
