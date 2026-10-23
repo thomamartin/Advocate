@@ -21,10 +21,11 @@ AdvocatePoolKey = collections.namedtuple(
 
 def key_normalizer(key_class, request_context):
     request_context = request_context.copy()
-    # TODO: add ability to serialize validator rules to dict,
-    # allowing pool to be shared between sessions with the same
-    # rules.
-    request_context["validator"] = id(request_context["validator"])
+    validator = request_context.get("validator")
+    if hasattr(validator, "as_pool_key"):
+        request_context["validator"] = validator.as_pool_key()
+    else:
+        request_context["validator"] = id(validator)
     return _default_key_normalizer(key_class, request_context)
 
 

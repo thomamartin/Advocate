@@ -1,10 +1,14 @@
 import ipaddress
 import socket
+import sys
 
 from urllib3.connection import HTTPSConnection, HTTPConnection
-from urllib3.exceptions import ConnectTimeoutError
+from urllib3.exceptions import (
+    ConnectTimeoutError,
+    NameResolutionError,
+    NewConnectionError,
+)
 from urllib3.util.connection import _set_socket_options
-from urllib3.util.connection import create_connection as old_create_connection
 
 from . import addrvalidator
 from .exceptions import UnacceptableAddressException
@@ -69,6 +73,8 @@ def validating_create_connection(
     """
 
     host, port = address
+    if host.startswith("["):
+        host = host.strip("[]")
     # We can skip asking for the canon name if we're not doing hostname-based
     # blacklisting.
     need_canonname = False
@@ -135,30 +141,25 @@ def _validating_new_conn(self):
 
     :return: New socket connection.
     """
-    extra_kw = {}
-    if self.source_address:
-        extra_kw["source_address"] = self.source_address
-
-    if self.socket_options:
-        extra_kw["socket_options"] = self.socket_options
-
     try:
-        # Hack around HTTPretty's patched sockets
-        # TODO: some better method of hacking around it that checks if we
-        # _would have_ connected to a private addr?
-        conn_func = validating_create_connection
-        if socket.getaddrinfo.__module__.startswith("httpretty"):
-            conn_func = old_create_connection
-        else:
-            extra_kw["validator"] = self._validator
-
-        conn = conn_func((self.host, self.port), self.timeout, **extra_kw)
-
+        conn = validating_create_connection(
+            (self._dns_host, self.port),
+            self.timeout,
+            source_address=self.source_address,
+            socket_options=self.socket_options,
+            validator=self._validator,
+        )
+    except socket.gaierror as e:
+        raise NameResolutionError(self.host, self, e) from e
     except TimeoutError as e:
         raise ConnectTimeoutError(
             self,
             f"Connection to {self.host} timed out. (connect timeout={self.timeout})",
         ) from e
+    except OSError as e:
+        raise NewConnectionError(self, f"Failed to establish a new connection: {e}") from e
+
+    sys.audit("http.client.connect", self, self.host, self.port)
 
     return conn
 

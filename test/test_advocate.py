@@ -1,8 +1,13 @@
+import builtins
+import http.server
 import ipaddress
 import pathlib
 import pickle
+import re
 import socket
+import threading
 import tomllib
+import types
 
 # This needs to be done before third-party imports to make sure they all use
 # our wrapped socket class, especially in case of subclasses.
@@ -12,12 +17,17 @@ socket.socket = CheckedSocket
 
 import pytest
 import requests
+from urllib3.exceptions import ConnectTimeoutError, NameResolutionError, NewConnectionError
 
 import advocate
 from advocate import AddrValidator, ValidatingHTTPAdapter
 from advocate.addrvalidator import canonicalize_hostname
 from advocate.api import RequestsAPIWrapper
-from advocate.connection import advocate_getaddrinfo
+from advocate.connection import (
+    ValidatingHTTPSConnection,
+    advocate_getaddrinfo,
+    validating_create_connection,
+)
 from advocate.exceptions import (
     ConfigException,
     MountDisabledException,
@@ -25,6 +35,7 @@ from advocate.exceptions import (
     UnacceptableAddressException,
 )
 from advocate.futures import FuturesSession
+from advocate.poolmanager import AdvocatePoolKey, key_normalizer
 
 
 # We use port 1 for testing because nothing is likely to legitimately listen
@@ -215,6 +226,7 @@ def test_safecurl_blacklist():
 
 def test_ipv4_mapped():
     assert_ip_kind_blocked("::ffff:192.168.2.1")
+    assert_ip_kind_blocked("::ffff:8.8.8.8")
 
 
 @pytest.mark.parametrize("allow_teredo", [True, False])
@@ -224,6 +236,9 @@ def test_teredo(allow_teredo):
         "2001:0000:4136:e378:8000:63bf:3f57:fdf2",
         allow_teredo=allow_teredo,
     )
+    # 65.54.227.120 server and 8.8.8.8 client: allowed iff allow_teredo=True
+    validator = permissive_validator(allow_teredo=allow_teredo)
+    assert validator.is_ip_allowed("2001:0000:4136:e378:8000:63bf:f7f7:f7f7") is allow_teredo
 
 
 def test_ipv6():
@@ -232,14 +247,20 @@ def test_ipv6():
 
 @pytest.mark.parametrize("allow_6to4", [True, False])
 def test_sixtofour(allow_6to4):
-    # 192.168.XXX.XXX
+    # 192.168.XXX.XXX: disallowed even if 6to4 is allowed
     assert_ip_kind_blocked("2002:C0A8:FFFF::", allow_6to4=allow_6to4)
+    # 8.8.8.8: allowed iff allow_6to4=True
+    validator = permissive_validator(allow_6to4=allow_6to4)
+    assert validator.is_ip_allowed("2002:0808:0808::") is allow_6to4
 
 
 @pytest.mark.parametrize("allow_dns64", [True, False])
 def test_dns64(allow_dns64):
     # https://tools.ietf.org/html/rfc6052
     assert_ip_kind_blocked("64:ff9b::192.168.2.1", allow_dns64=allow_dns64)
+    # 8.8.8.8: allowed iff allow_dns64=True
+    validator = permissive_validator(allow_dns64=allow_dns64)
+    assert validator.is_ip_allowed("64:ff9b::8.8.8.8") is allow_dns64
 
 
 def test_link_local():
@@ -473,14 +494,50 @@ def test_blacklist_hostname():
         )
 
 
-@pytest.mark.skip(reason="the redirection endpoint appears to be broken")
 def test_redirect():
-    test_url = "http://httpbin.org/status/204"
-    assert advocate.get(test_url).status_code == 204
+    class RedirectHandler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/status/204":
+                self.send_response(204)
+                self.end_headers()
+            elif self.path == "/redirect-ok":
+                self.send_response(302)
+                self.send_header(
+                    "Location", f"http://127.0.0.1:{self.server.server_port}/status/204"
+                )
+                self.end_headers()
+            elif self.path == "/redirect-blocked":
+                self.send_response(302)
+                self.send_header("Location", "http://127.0.0.2:1/")
+                self.end_headers()
 
-    redir_url = "http://httpbin.org/redirect-to?url=http://127.0.0.1/"
-    with pytest.raises(UnacceptableAddressException):
-        advocate.get(redir_url)
+        def log_message(self, format, *args):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), RedirectHandler)
+    port = server.server_port
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        validator = AddrValidator(
+            ip_whitelist={ipaddress.ip_network("127.0.0.1")},
+            port_whitelist={port, 1},
+        )
+        assert (
+            advocate.get(
+                f"http://127.0.0.1:{port}/redirect-ok",
+                validator=validator,
+            ).status_code
+            == 204
+        )
+        with pytest.raises(UnacceptableAddressException):
+            advocate.get(
+                f"http://127.0.0.1:{port}/redirect-blocked",
+                validator=validator,
+            )
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 def test_mount_disabled():
@@ -650,3 +707,148 @@ def test_advocate_wrapper_futures():
     with pytest.raises(UnacceptableAddressException):
         sess = wrapper.FuturesSession()
         sess.get("https://localhost:1/").result()
+
+
+def test_determine_local_addresses_ipv4_and_ipv6(monkeypatch):
+    fake_adapters = [
+        types.SimpleNamespace(
+            ips=[
+                types.SimpleNamespace(is_IPv6=False, ip="192.0.2.10"),
+                types.SimpleNamespace(is_IPv6=True, ip=("2001:db8::1", 0, 1)),
+            ]
+        )
+    ]
+    monkeypatch.setattr(
+        "advocate.addrvalidator.ifaddr.get_adapters",
+        lambda: fake_adapters,
+    )
+    local_addrs = advocate.addrvalidator.determine_local_addresses()
+    assert local_addrs == [
+        ipaddress.ip_network("192.0.2.10"),
+        ipaddress.ip_network("2001:db8::1"),
+    ]
+
+
+def test_hostname_blacklist_trailing_dot_and_regex():
+    validator = permissive_validator(
+        hostname_blacklist={"*.example.org.", re.compile(r"^internal\..*")}
+    )
+    assert not validator.is_hostname_allowed("sub.example.org")
+    assert not validator.is_hostname_allowed("sub.example.org.")
+    assert not validator.is_hostname_allowed("internal.corp.local")
+    assert validator.is_hostname_allowed("example.com")
+
+
+def test_host_header_blacklist_enforcement():
+    validator = AddrValidator(
+        ip_whitelist={ipaddress.ip_network("127.0.0.1")},
+        hostname_blacklist={"*.internal.example.com"},
+    )
+    with pytest.raises(UnacceptableAddressException):
+        advocate.get(
+            "http://127.0.0.1:1/",
+            headers={"Host": "admin.internal.example.com:8080"},
+            validator=validator,
+        )
+    with pytest.raises(requests.ConnectionError):
+        advocate.get(
+            "http://127.0.0.1:1/",
+            headers={"Host": "public.example.com"},
+            validator=validator,
+        )
+
+
+def test_pool_key_normalizer_and_mutation():
+    validator = AddrValidator()
+    k1 = key_normalizer(
+        AdvocatePoolKey,
+        {"scheme": "http", "host": "example.com", "port": 80, "validator": validator},
+    )
+    validator.ip_blacklist.add(ipaddress.ip_network("93.184.216.0/24"))
+    k2 = key_normalizer(
+        AdvocatePoolKey,
+        {"scheme": "http", "host": "example.com", "port": 80, "validator": validator},
+    )
+    assert k1 != k2
+
+    custom_validator = object()
+    k3 = key_normalizer(
+        AdvocatePoolKey,
+        {
+            "scheme": "http",
+            "host": "example.com",
+            "port": 80,
+            "validator": custom_validator,
+        },
+    )
+    assert k3.key_validator == id(custom_validator)
+
+
+@pytest.mark.parametrize(
+    "method_name",
+    ["get", "options", "head", "post", "put", "patch", "delete"],
+)
+def test_top_level_api_methods_and_session(method_name):
+    sess = advocate.session()
+    assert isinstance(sess, advocate.Session)
+    with pytest.raises(UnacceptableAddressException):
+        getattr(advocate, method_name)("http://127.0.0.1:1/")
+
+
+def test_wrapper_without_futures(monkeypatch):
+    real_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "futures" and level == 1:
+            raise ImportError("mocked missing futures")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    wrapper = RequestsAPIWrapper(AddrValidator())
+    assert not hasattr(wrapper, "FuturesSession")
+    assert isinstance(wrapper.session(), advocate.Session)
+
+
+def test_validating_connection_edge_cases(monkeypatch):
+    validator = AddrValidator(
+        ip_whitelist={ipaddress.ip_network("::1"), ipaddress.ip_network("127.0.0.1")},
+        allow_ipv6=True,
+    )
+    with pytest.raises(OSError):
+        validating_create_connection(
+            ("[::1]", 1),
+            timeout=0.1,
+            source_address=("127.0.0.1", 0),
+            validator=validator,
+        )
+
+    monkeypatch.setattr(
+        "advocate.connection.advocate_getaddrinfo",
+        lambda host, port, get_canonname=False: [],
+    )
+    with pytest.raises(OSError, match="getaddrinfo returns an empty list"):
+        validating_create_connection(("example.com", 80), validator=validator)
+
+    conn = ValidatingHTTPSConnection("example.com", 443, validator=validator)
+    with pytest.raises(NewConnectionError):
+        conn._new_conn()
+
+    def raise_timeout(*args, **kwargs):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(
+        "advocate.connection.validating_create_connection",
+        raise_timeout,
+    )
+    with pytest.raises(ConnectTimeoutError):
+        conn._new_conn()
+
+    def raise_gaierror(*args, **kwargs):
+        raise socket.gaierror("name resolution failed")
+
+    monkeypatch.setattr(
+        "advocate.connection.validating_create_connection",
+        raise_gaierror,
+    )
+    with pytest.raises(NameResolutionError):
+        conn._new_conn()

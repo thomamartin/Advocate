@@ -100,6 +100,20 @@ class AddrValidator:
         self.allow_dns64 = allow_dns64
         self.autodetect_local_addresses = autodetect_local_addresses
 
+    def as_pool_key(self):
+        return (
+            frozenset(self.ip_blacklist),
+            frozenset(self.ip_whitelist),
+            frozenset(self.port_whitelist),
+            frozenset(self.port_blacklist),
+            frozenset(self.hostname_blacklist),
+            bool(self.allow_ipv6),
+            bool(self.allow_teredo),
+            bool(self.allow_6to4),
+            bool(self.allow_dns64),
+            bool(self.autodetect_local_addresses),
+        )
+
     @add_local_address_arg
     def is_ip_allowed(self, addr_ip, _local_addresses=None):
         if not isinstance(addr_ip, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
@@ -152,8 +166,13 @@ class AddrValidator:
                 # are the IPv4 addr
                 v4_nested.append(ipaddress.ip_address(addr_ip.packed[-4:]))
 
-            if not all(self.is_ip_allowed(addr_v4) for addr_v4 in v4_nested):
+            if not all(
+                self.is_ip_allowed(addr_v4, _local_addresses=_local_addresses)
+                for addr_v4 in v4_nested
+            ):
                 return False
+            if v4_nested and not addr_ip.ipv4_mapped:
+                return True
 
             # fec0::*, apparently deprecated?
             if addr_ip.is_site_local:
@@ -169,17 +188,17 @@ class AddrValidator:
             return False
         if addr_ip.is_multicast:
             return False
-        # 192.168.XXX.XXX, 10.XXX.XXX.XXX
-        if addr_ip.is_private:
-            return False
-        # 255.255.255.255, ::ffff:XXXX:XXXX (v6->v4) mapping
-        if addr_ip.is_reserved:
-            return False
         # There's no reason to connect directly to a 6to4 relay
         if addr_ip in self._6TO4_RELAY_NET:
             return False
         # 0.0.0.0
         if addr_ip.is_unspecified:
+            return False
+        # 192.168.XXX.XXX, 10.XXX.XXX.XXX
+        if addr_ip.is_private:
+            return False
+        # 255.255.255.255, ::ffff:XXXX:XXXX (v6->v4) mapping
+        if addr_ip.is_reserved:
             return False
 
         # It doesn't look bad, so... it's must be ok!
@@ -193,7 +212,7 @@ class AddrValidator:
         # IDNs by default.
         if isinstance(pattern, str):
             # convert the glob to a punycode glob, then a regex
-            pattern = fnmatch.translate(canonicalize_hostname(pattern))
+            pattern = fnmatch.translate(canonicalize_hostname(pattern).strip("."))
 
         hostname = canonicalize_hostname(hostname)
         # Down the line the hostname may get treated as a null-terminated string
