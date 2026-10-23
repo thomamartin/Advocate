@@ -124,7 +124,15 @@ def local_address_calls(monkeypatch):
 def test_version_matches_pyproject():
     pyproject = pathlib.Path(__file__).parent.parent / "pyproject.toml"
     with pyproject.open("rb") as f:
-        assert advocate.__version__ == tomllib.load(f)["project"]["version"]
+        data = tomllib.load(f)
+    assert advocate.__version__ == data["project"]["version"]
+    assert data["project"]["name"] == "advocate2"
+    assert data["tool"]["uv"]["build-backend"]["module-name"] == "advocate"
+    assert data["project"]["urls"]["Homepage"] == "https://github.com/thomamartin/Advocate"
+    assert data["project"]["urls"]["Repository"] == "https://github.com/thomamartin/Advocate"
+    assert (
+        data["project"]["urls"]["Issues"] == "https://github.com/thomamartin/Advocate/issues"
+    )
 
 
 def test_unsafe_connect_raises():
