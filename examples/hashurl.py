@@ -7,7 +7,7 @@ import requests
 app = Flask(__name__)
 
 
-@app.route('/')
+@app.route("/")
 def get_hash():
     url = request.args.get("url")
     if not url:
@@ -22,5 +22,6 @@ def get_hash():
 
     return hashlib.sha256(resp.content).hexdigest()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     app.run()

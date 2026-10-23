@@ -4,11 +4,12 @@ import ipaddress
 import re
 
 try:
-    import netifaces
-    HAVE_NETIFACES = True
+    import ifaddr
+
+    HAVE_IFADDR = True
 except ImportError:
-    netifaces = None
-    HAVE_NETIFACES = False
+    ifaddr = None
+    HAVE_IFADDR = False
 
 from .exceptions import NameserverException, ConfigException
 
@@ -19,24 +20,24 @@ def canonicalize_hostname(hostname):
     # lowercase the *ASCII* chars.
     # TODO: The differences between IDNA2003 and IDNA2008 might be relevant
     # to us, but both specs are damn confusing.
-    return str(hostname.encode("idna").lower(), 'utf-8')
+    return str(hostname.encode("idna").lower(), "utf-8")
 
 
 def determine_local_addresses():
-    """Get all IPs that refer to this machine according to netifaces"""
-    if not HAVE_NETIFACES:
-        raise ConfigException("Tried to determine local addresses, "
-                              "but netifaces module was not importable")
+    """Get all IPs that refer to this machine according to ifaddr"""
+    if not HAVE_IFADDR:
+        raise ConfigException(
+            "Tried to determine local addresses, but ifaddr module was not importable"
+        )
     ips = []
-    for interface in netifaces.interfaces():
-        if_families = netifaces.ifaddresses(interface)
-        for family_kind in {netifaces.AF_INET, netifaces.AF_INET6}:
-            addrs = if_families.get(family_kind, [])
-            for addr in (x.get("addr", "") for x in addrs):
-                if family_kind == netifaces.AF_INET6:
-                    # We can't do anything sensible with the scope here
-                    addr = addr.split("%")[0]
-                ips.append(ipaddress.ip_network(addr))
+    for adapter in ifaddr.get_adapters():
+        for ip in adapter.ips:
+            if ip.is_IPv6:
+                # v6 addresses are (address, flowinfo, scope_id) tuples
+                addr = ip.ip[0]
+            else:
+                addr = ip.ip
+            ips.append(ipaddress.ip_network(addr))
     return ips
 
 
@@ -47,6 +48,7 @@ def add_local_address_arg(func):
     adapters got a new IP at runtime?,) and we don't want each function to
     recalculate it. Just recalculate it if the caller didn't provide it for us.
     """
+
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
         if "_local_addresses" not in kwargs:
@@ -55,6 +57,7 @@ def add_local_address_arg(func):
             else:
                 kwargs["_local_addresses"] = []
         return func(self, *args, **kwargs)
+
     return wrapper
 
 
@@ -66,19 +69,19 @@ class AddrValidator:
     DEFAULT_PORT_WHITELIST = {80, 8080, 443, 8443, 8000}
 
     def __init__(
-            self,
-            ip_blacklist=None,
-            ip_whitelist=None,
-            port_whitelist=None,
-            port_blacklist=None,
-            hostname_blacklist=None,
-            allow_ipv6=False,
-            allow_teredo=False,
-            allow_6to4=False,
-            allow_dns64=False,
-            # Must be explicitly set to "False" if you don't want to try
-            # detecting local interface addresses with netifaces.
-            autodetect_local_addresses=True,
+        self,
+        ip_blacklist=None,
+        ip_whitelist=None,
+        port_whitelist=None,
+        port_blacklist=None,
+        hostname_blacklist=None,
+        allow_ipv6=False,
+        allow_teredo=False,
+        allow_6to4=False,
+        allow_dns64=False,
+        # Must be explicitly set to "False" if you don't want to try
+        # detecting local interface addresses with ifaddr.
+        autodetect_local_addresses=True,
     ):
         if not port_blacklist and not port_whitelist:
             # An assortment of common HTTPS? ports.
@@ -97,10 +100,23 @@ class AddrValidator:
         self.allow_dns64 = allow_dns64
         self.autodetect_local_addresses = autodetect_local_addresses
 
+    def as_pool_key(self):
+        return (
+            frozenset(self.ip_blacklist),
+            frozenset(self.ip_whitelist),
+            frozenset(self.port_whitelist),
+            frozenset(self.port_blacklist),
+            frozenset(self.hostname_blacklist),
+            bool(self.allow_ipv6),
+            bool(self.allow_teredo),
+            bool(self.allow_6to4),
+            bool(self.allow_dns64),
+            bool(self.autodetect_local_addresses),
+        )
+
     @add_local_address_arg
     def is_ip_allowed(self, addr_ip, _local_addresses=None):
-        if not isinstance(addr_ip,
-                          (ipaddress.IPv4Address, ipaddress.IPv6Address)):
+        if not isinstance(addr_ip, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
             addr_ip = ipaddress.ip_address(addr_ip)
 
         # The whitelist should take precedence over the blacklist so we can
@@ -150,14 +166,19 @@ class AddrValidator:
                 # are the IPv4 addr
                 v4_nested.append(ipaddress.ip_address(addr_ip.packed[-4:]))
 
-            if not all(self.is_ip_allowed(addr_v4) for addr_v4 in v4_nested):
+            if not all(
+                self.is_ip_allowed(addr_v4, _local_addresses=_local_addresses)
+                for addr_v4 in v4_nested
+            ):
                 return False
+            if v4_nested and not addr_ip.ipv4_mapped:
+                return True
 
             # fec0::*, apparently deprecated?
             if addr_ip.is_site_local:
                 return False
         else:
-            raise ValueError("Unsupported IP version(?): %r" % addr_ip)
+            raise ValueError(f"Unsupported IP version(?): {addr_ip!r}")
 
         # 169.254.XXX.XXX, AWS uses these for autoconfiguration
         if addr_ip.is_link_local:
@@ -167,17 +188,17 @@ class AddrValidator:
             return False
         if addr_ip.is_multicast:
             return False
-        # 192.168.XXX.XXX, 10.XXX.XXX.XXX
-        if addr_ip.is_private:
-            return False
-        # 255.255.255.255, ::ffff:XXXX:XXXX (v6->v4) mapping
-        if addr_ip.is_reserved:
-            return False
         # There's no reason to connect directly to a 6to4 relay
         if addr_ip in self._6TO4_RELAY_NET:
             return False
         # 0.0.0.0
         if addr_ip.is_unspecified:
+            return False
+        # 192.168.XXX.XXX, 10.XXX.XXX.XXX
+        if addr_ip.is_private:
+            return False
+        # 255.255.255.255, ::ffff:XXXX:XXXX (v6->v4) mapping
+        if addr_ip.is_reserved:
             return False
 
         # It doesn't look bad, so... it's must be ok!
@@ -191,7 +212,7 @@ class AddrValidator:
         # IDNs by default.
         if isinstance(pattern, str):
             # convert the glob to a punycode glob, then a regex
-            pattern = fnmatch.translate(canonicalize_hostname(pattern))
+            pattern = fnmatch.translate(canonicalize_hostname(pattern).strip("."))
 
         hostname = canonicalize_hostname(hostname)
         # Down the line the hostname may get treated as a null-terminated string
@@ -201,8 +222,7 @@ class AddrValidator:
         #    [(2, 1, 6, '', ('93.184.216.34', 80)), [...]
         no_null_hostname = hostname.split("\x00")[0]
 
-        return any(re.match(pattern, x.strip(".")) for x
-                   in (no_null_hostname, hostname))
+        return any(re.match(pattern, x.strip(".")) for x in (no_null_hostname, hostname))
 
     def is_hostname_allowed(self, hostname):
         # Sometimes (like with "external" services that your IP has privileged
@@ -223,7 +243,7 @@ class AddrValidator:
 
     @add_local_address_arg
     def is_addrinfo_allowed(self, addrinfo, _local_addresses=None):
-        assert(len(addrinfo) == 5)
+        assert len(addrinfo) == 5
         # XXX: Do we care about any of the other elements? Guessing not.
         family, socktype, proto, canonname, sockaddr = addrinfo
 
@@ -239,7 +259,7 @@ class AddrValidator:
             # the `is_<x>` properties.
             ip, port, flow_info, scope_id = sockaddr
         else:
-            raise ValueError("Unexpected addrinfo format %r" % sockaddr)
+            raise ValueError(f"Unexpected addrinfo format {sockaddr!r}")
 
         # Probably won't help protect against SSRF, but might prevent our being
         # used to attack others' non-HTTP services. See

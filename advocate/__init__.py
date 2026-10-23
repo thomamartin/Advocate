@@ -1,11 +1,16 @@
-__version__ = "1.0.0"
+# Keep in sync with pyproject.toml
+__version__ = "2.0.0"
 
 from requests import utils
 from requests.models import Request, Response, PreparedRequest
 from requests.status_codes import codes
 from requests.exceptions import (
-    RequestException, Timeout, URLRequired,
-    TooManyRedirects, HTTPError, ConnectionError
+    RequestException,
+    Timeout,
+    URLRequired,
+    TooManyRedirects,
+    HTTPError,
+    ConnectionError,
 )
 
 from .adapters import ValidatingHTTPAdapter
