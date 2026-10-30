@@ -9,58 +9,76 @@ itself.
 :license: Apache2, see LICENSE for more details.
 
 """
+
+from __future__ import annotations
+
 from collections import OrderedDict
+from collections.abc import Callable
 import hashlib
 import pickle
+from typing import Any, TypeVar
 
+from requests import Response
 from requests import Session as RequestsSession
 
 import advocate
+
 from .adapters import ValidatingHTTPAdapter
+from .addrvalidator import AddrValidator
 from .exceptions import MountDisabledException
+
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 class Session(RequestsSession):
     """Convenience wrapper around `requests.Session` set up for `advocate`ing"""
 
-    __attrs__ = RequestsSession.__attrs__ + ["validator"]
-    DEFAULT_VALIDATOR = None
+    __attrs__ = [*RequestsSession.__attrs__, "validator"]
+    DEFAULT_VALIDATOR: AddrValidator | None = None
     """
     User-replaceable default validator to use for all Advocate sessions,
     includes sessions created by advocate.get()
     """
 
-    def __init__(self, *args, **kwargs):
-        self.validator = kwargs.pop("validator", None) or self.DEFAULT_VALIDATOR
-        adapter_kwargs = kwargs.pop("_adapter_kwargs", {})
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self.validator: AddrValidator | None = (
+            kwargs.pop("validator", None) or self.DEFAULT_VALIDATOR
+        )
+        adapter_kwargs: dict[str, Any] = kwargs.pop("_adapter_kwargs", {})
 
         # `Session.__init__()` calls `mount()` internally, so we need to allow
         # it temporarily
         self.__mount_allowed = True
-        RequestsSession.__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
 
         # Drop any existing adapters
         self.adapters = OrderedDict()
 
-        self.mount("http://", ValidatingHTTPAdapter(validator=self.validator, **adapter_kwargs))
-        self.mount("https://", ValidatingHTTPAdapter(validator=self.validator, **adapter_kwargs))
+        self.mount(
+            "http://",
+            ValidatingHTTPAdapter(validator=self.validator, **adapter_kwargs),
+        )
+        self.mount(
+            "https://",
+            ValidatingHTTPAdapter(validator=self.validator, **adapter_kwargs),
+        )
         self.__mount_allowed = False
 
-    def mount(self, *args, **kwargs):
+    def mount(self, prefix: str, adapter: Any) -> None:
         """Wrapper around `mount()` to prevent a protection bypass"""
         if self.__mount_allowed:
-            super().mount(*args, **kwargs)
+            super().mount(prefix, adapter)
         else:
             raise MountDisabledException(
                 "mount() is disabled to prevent protection bypasses"
             )
 
 
-def session(*args, **kwargs):
+def session(*args: Any, **kwargs: Any) -> Session:
     return Session(*args, **kwargs)
 
 
-def request(method, url, **kwargs):
+def request(method: str, url: str, **kwargs: Any) -> Response:
     """Constructs and sends a :class:`Request <Request>`.
 
     :param method: method for the new :class:`Request` object.
@@ -91,54 +109,50 @@ def request(method, url, **kwargs):
       >>> req = advocate.request('GET', 'http://httpbin.org/get')
       <Response [200]>
     """
-
     validator = kwargs.pop("validator", None)
     with Session(validator=validator) as sess:
         response = sess.request(method=method, url=url, **kwargs)
     return response
 
 
-def get(url, **kwargs):
-    """Sends a GET request.
+def get(url: str, **kwargs: Any) -> Response:
+    r"""Sends a GET request.
 
     :param url: URL for the new :class:`Request` object.
     :param \*\*kwargs: Optional arguments that ``request`` takes.
     :return: :class:`Response <Response>` object
     :rtype: requests.Response
     """
-
-    kwargs.setdefault('allow_redirects', True)
-    return request('get', url, **kwargs)
-
-
-def options(url, **kwargs):
-    """Sends a OPTIONS request.
-
-    :param url: URL for the new :class:`Request` object.
-    :param \*\*kwargs: Optional arguments that ``request`` takes.
-    :return: :class:`Response <Response>` object
-    :rtype: requests.Response
-    """
-
-    kwargs.setdefault('allow_redirects', True)
-    return request('options', url, **kwargs)
+    kwargs.setdefault("allow_redirects", True)
+    return request("get", url, **kwargs)
 
 
-def head(url, **kwargs):
-    """Sends a HEAD request.
+def options(url: str, **kwargs: Any) -> Response:
+    r"""Sends a OPTIONS request.
 
     :param url: URL for the new :class:`Request` object.
     :param \*\*kwargs: Optional arguments that ``request`` takes.
     :return: :class:`Response <Response>` object
     :rtype: requests.Response
     """
+    kwargs.setdefault("allow_redirects", True)
+    return request("options", url, **kwargs)
 
-    kwargs.setdefault('allow_redirects', False)
-    return request('head', url, **kwargs)
+
+def head(url: str, **kwargs: Any) -> Response:
+    r"""Sends a HEAD request.
+
+    :param url: URL for the new :class:`Request` object.
+    :param \*\*kwargs: Optional arguments that ``request`` takes.
+    :return: :class:`Response <Response>` object
+    :rtype: requests.Response
+    """
+    kwargs.setdefault("allow_redirects", False)
+    return request("head", url, **kwargs)
 
 
-def post(url, data=None, json=None, **kwargs):
-    """Sends a POST request.
+def post(url: str, data: Any = None, json: Any = None, **kwargs: Any) -> Response:
+    r"""Sends a POST request.
 
     :param url: URL for the new :class:`Request` object.
     :param data: (optional) Dictionary, bytes, or file-like object to send in the body of the :class:`Request`.
@@ -147,25 +161,11 @@ def post(url, data=None, json=None, **kwargs):
     :return: :class:`Response <Response>` object
     :rtype: requests.Response
     """
-
-    return request('post', url, data=data, json=json, **kwargs)
-
-
-def put(url, data=None, **kwargs):
-    """Sends a PUT request.
-
-    :param url: URL for the new :class:`Request` object.
-    :param data: (optional) Dictionary, bytes, or file-like object to send in the body of the :class:`Request`.
-    :param \*\*kwargs: Optional arguments that ``request`` takes.
-    :return: :class:`Response <Response>` object
-    :rtype: requests.Response
-    """
-
-    return request('put', url, data=data, **kwargs)
+    return request("post", url, data=data, json=json, **kwargs)
 
 
-def patch(url, data=None, **kwargs):
-    """Sends a PATCH request.
+def put(url: str, data: Any = None, **kwargs: Any) -> Response:
+    r"""Sends a PUT request.
 
     :param url: URL for the new :class:`Request` object.
     :param data: (optional) Dictionary, bytes, or file-like object to send in the body of the :class:`Request`.
@@ -173,20 +173,30 @@ def patch(url, data=None, **kwargs):
     :return: :class:`Response <Response>` object
     :rtype: requests.Response
     """
+    return request("put", url, data=data, **kwargs)
 
-    return request('patch', url, data=data, **kwargs)
+
+def patch(url: str, data: Any = None, **kwargs: Any) -> Response:
+    r"""Sends a PATCH request.
+
+    :param url: URL for the new :class:`Request` object.
+    :param data: (optional) Dictionary, bytes, or file-like object to send in the body of the :class:`Request`.
+    :param \*\*kwargs: Optional arguments that ``request`` takes.
+    :return: :class:`Response <Response>` object
+    :rtype: requests.Response
+    """
+    return request("patch", url, data=data, **kwargs)
 
 
-def delete(url, **kwargs):
-    """Sends a DELETE request.
+def delete(url: str, **kwargs: Any) -> Response:
+    r"""Sends a DELETE request.
 
     :param url: URL for the new :class:`Request` object.
     :param \*\*kwargs: Optional arguments that ``request`` takes.
     :return: :class:`Response <Response>` object
     :rtype: requests.Response
     """
-
-    return request('delete', url, **kwargs)
+    return request("delete", url, **kwargs)
 
 
 class RequestsAPIWrapper:
@@ -197,12 +207,13 @@ class RequestsAPIWrapper:
     # Enable at your peril.
     SUPPORT_WRAPPER_PICKLING = False
 
-    def __init__(self, validator):
+    def __init__(self, validator: AddrValidator) -> None:
         # Do this here to avoid circular import issues
         try:
             from .futures import FuturesSession
+
             have_requests_futures = True
-        except ImportError as e:
+        except ImportError:
             have_requests_futures = False
 
         self.validator = validator
@@ -215,6 +226,7 @@ class RequestsAPIWrapper:
             so people should be able to subclass `wrapper.Session` and still
             get the desired validation behaviour
             """
+
             DEFAULT_VALIDATOR = outer_self.validator
 
         self._make_wrapper_cls_global(_WrappedSession)
@@ -223,7 +235,9 @@ class RequestsAPIWrapper:
 
             class _WrappedFuturesSession(FuturesSession):
                 """Like _WrappedSession, but for `FuturesSession`s"""
+
                 DEFAULT_VALIDATOR = outer_self.validator
+
             self._make_wrapper_cls_global(_WrappedFuturesSession)
 
             self.FuturesSession = _WrappedFuturesSession
@@ -239,7 +253,7 @@ class RequestsAPIWrapper:
         self.session = self._default_arg_wrapper(session)
         self.Session = _WrappedSession
 
-    def __getattr__(self, item):
+    def __getattr__(self, item: str) -> Any:
         # This class is meant to mimic the requests base module, so if we don't
         # have this attribute, it might be on the base module (like the Request
         # class, etc.)
@@ -248,13 +262,14 @@ class RequestsAPIWrapper:
         except AttributeError:
             return getattr(advocate, item)
 
-    def _default_arg_wrapper(self, fun):
-        def wrapped_func(*args, **kwargs):
+    def _default_arg_wrapper(self, fun: F) -> F:
+        def wrapped_func(*args: Any, **kwargs: Any) -> Any:
             kwargs.setdefault("validator", self.validator)
             return fun(*args, **kwargs)
-        return wrapped_func
 
-    def _make_wrapper_cls_global(self, cls):
+        return wrapped_func  # type: ignore[return-value]
+
+    def _make_wrapper_cls_global(self, cls: type[Any]) -> None:
         if not self.SUPPORT_WRAPPER_PICKLING:
             return
         # Gnarly, but necessary to give pickle a consistent module-level
@@ -267,6 +282,8 @@ class RequestsAPIWrapper:
 
 
 __all__ = (
+    "RequestsAPIWrapper",
+    "Session",
     "delete",
     "get",
     "head",
@@ -276,6 +293,4 @@ __all__ = (
     "put",
     "request",
     "session",
-    "Session",
-    "RequestsAPIWrapper",
 )

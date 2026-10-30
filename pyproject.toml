@@ -1,0 +1,127 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "advocate"
+dynamic = ["version"]
+description = "A wrapper around the requests library for safely making HTTP requests on behalf of a third party"
+readme = "README.rst"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Jordan Milne", email = "advocate@saynotolinux.com"},
+]
+keywords = ["http", "requests", "security", "ssrf", "proxy", "rebinding", "advocate"]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+    "Topic :: Internet :: WWW/HTTP",
+    "Typing :: Typed",
+]
+dependencies = [
+    "requests>=2.31.0,<3.0",
+    "urllib3>=2.0.0,<3.0",
+    "ifaddr>=0.2.0",
+]
+
+[project.optional-dependencies]
+futures = [
+    "requests-futures>=1.0.0",
+]
+test = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-httpbin>=2.0",
+    "pytest-mock>=3.10",
+    "requests-futures>=1.0.0",
+    "requests-mock>=1.11.0",
+    "trustme>=1.0.0",
+]
+dev = [
+    "advocate[test]",
+    "ruff>=0.4.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/JordanMilne/Advocate"
+Repository = "https://github.com/JordanMilne/Advocate"
+
+[tool.setuptools.dynamic]
+version = {attr = "advocate.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["advocate*"]
+
+[tool.setuptools.package-data]
+advocate = ["py.typed"]
+
+[tool.pytest.ini_options]
+addopts = "-p no:warnings"
+norecursedirs = [
+    "env",
+    "build",
+    "docs",
+    ".eggs",
+    ".git",
+    "packages",
+    "dev_packages",
+    "dist",
+    ".cache",
+    ".venv",
+]
+testpaths = ["test"]
+
+[tool.coverage.run]
+source = ["advocate"]
+omit = [
+    "advocate/packages/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self\\.debug",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+ignore_errors = true
+
+[tool.ruff]
+line-length = 95
+target-version = "py310"
+exclude = [
+    "env",
+    "build",
+    "docs",
+    ".eggs",
+    ".git",
+    "packages",
+    "dev_packages",
+    "dist",
+    "*.egg-info",
+    ".cache",
+    ".venv",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+
