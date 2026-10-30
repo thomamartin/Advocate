@@ -23,7 +23,7 @@ Installation
 
     pip install advocate
 
-Advocate is officially supported on CPython 3.6+. PyPy 3 may work as well, but is not tested.
+Advocate is officially supported on CPython 3.10+. PyPy 3 may work as well, but is not tested.
 
 Examples
 ========

@@ -1,14 +1,17 @@
+from __future__ import annotations
+
 import hashlib
 
 from flask import Flask, request
-import advocate
 import requests
+
+import advocate
 
 app = Flask(__name__)
 
 
-@app.route('/')
-def get_hash():
+@app.route("/")
+def get_hash() -> str:
     url = request.args.get("url")
     if not url:
         return "Please specify a url!"
@@ -22,5 +25,6 @@ def get_hash():
 
     return hashlib.sha256(resp.content).hexdigest()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     app.run()

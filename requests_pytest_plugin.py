@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import doctest
 import ipaddress
 import os
 import socket
+from typing import Any
 
 import requests
 import urllib3
@@ -9,9 +12,7 @@ import urllib3
 import advocate
 import advocate.api
 from advocate.exceptions import MountDisabledException, ProxyDisabledException
-
 from test.monkeypatching import CheckedSocket
-
 
 SKIP_EXCEPTIONS = (MountDisabledException, ProxyDisabledException)
 IGNORED_ASSERT_PREFIXES = (
@@ -22,7 +23,7 @@ IGNORED_ASSERT_PREFIXES = (
 )
 
 
-def pytest_runtestloop():
+def pytest_runtestloop() -> None:
     validator = advocate.AddrValidator(
         ip_whitelist={
             # requests needs to be able to hit these for its tests!
@@ -31,11 +32,11 @@ def pytest_runtestloop():
             ipaddress.ip_network("10.255.255.1"),
         },
         # the `httpbin` fixture uses a random port, we need to allow all ports
-        port_whitelist=set(range(0, 65535)),
+        port_whitelist=set(range(0, 65536)),
     )
 
     # this will yell at us if we failed to patch something
-    socket.socket = CheckedSocket
+    socket.socket = CheckedSocket  # type: ignore[misc]
 
     # requests' tests rely on being able to pickle a `Session`
     advocate.api.RequestsAPIWrapper.SUPPORT_WRAPPER_PICKLING = True
@@ -46,27 +47,32 @@ def pytest_runtestloop():
 
     wanted_requests_version = os.environ.get("WANTED_REQUESTS_VERSION")
     if wanted_requests_version and wanted_requests_version != requests.__version__:
-        raise RuntimeError("Expected requests " + wanted_requests_version +
-                           ", got " + requests.__version__)
+        raise RuntimeError(
+            f"Expected requests {wanted_requests_version}, got {requests.__version__}"
+        )
 
     wanted_urllib3_version = os.environ.get("WANTED_URLLIB3_VERSION")
     if wanted_urllib3_version and wanted_urllib3_version != urllib3.__version__:
-        raise RuntimeError("Expected urllib3 " + wanted_urllib3_version +
-                           ", got " + urllib3.__version__)
+        raise RuntimeError(
+            f"Expected urllib3 {wanted_urllib3_version}, got {urllib3.__version__}"
+        )
 
     try:
         requests.get("http://192.168.0.1")
     except advocate.UnacceptableAddressException:
         return
-    raise RuntimeError("Requests patching failed, can't run patched requests test suite!")
+    raise RuntimeError(
+        "Requests patching failed, can't run patched requests test suite!"
+    )
 
 
-def pytest_runtest_makereport(item, call):
+def pytest_runtest_makereport(item: Any, call: Any) -> Any:
     # This is necessary because we pull in requests' test suite,
     # which sometimes tests `session.mount()`. We disable that
     # method, so we need to ignore tests that use it.
 
     from _pytest.runner import pytest_runtest_makereport as mr
+
     report = mr(item, call)
 
     if call.excinfo is not None:
@@ -75,11 +81,17 @@ def pytest_runtest_makereport(item, call):
             exc = call.excinfo.value.exc_info[1]
 
         if isinstance(exc, SKIP_EXCEPTIONS):
-            report.outcome = 'skipped'
+            report.outcome = "skipped"
             report.wasxfail = "reason: Advocate is not meant to support this"
-        if isinstance(exc, AssertionError):
-            if exc.args and any(exc.args[0].startswith(prefix) for prefix in IGNORED_ASSERT_PREFIXES):
-                report.outcome = 'skipped'
-                report.wasxfail = "reason: Outdated assertion: %s" % exc.args[0]
+        if (
+            isinstance(exc, AssertionError)
+            and exc.args
+            and any(
+                str(exc.args[0]).startswith(prefix)
+                for prefix in IGNORED_ASSERT_PREFIXES
+            )
+        ):
+            report.outcome = "skipped"
+            report.wasxfail = f"reason: Outdated assertion: {exc.args[0]}"
 
     return report

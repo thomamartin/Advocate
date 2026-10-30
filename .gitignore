@@ -2,7 +2,10 @@
 .*.sw?
 *.pyc
 *.pyo
+__pycache__/
 .cache
+.pytest_cache/
+.ruff_cache/
 .DS_Store
 *.diff
 *.patch
@@ -14,3 +17,5 @@
 /dist
 /dev_packages
 /env
+/.venv
+/.devcontainer
