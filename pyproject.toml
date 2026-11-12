@@ -67,9 +67,6 @@ Issues = "https://github.com/JordanMilne/Advocate/issues"
 where = ["."]
 include = ["advocate*"]
 
-[tool.setuptools.package-data]
-""" = ["*"]
-
 [tool.wheel]
 universal = true
 
