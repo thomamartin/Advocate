@@ -1,0 +1,137 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "advocate"
+version = "1.0.0"
+description = "A wrapper around the requests library for safely making HTTP requests on behalf of a third party"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "Apache-2.0"}
+keywords = ["http", "requests", "security", "ssrf", "proxy", "rebinding", "advocate"]
+authors = [
+    {name = "Jordan Milne", email = "advocate@saynotolinux.com"}
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Internet :: WWW/HTTP",
+    "Typing :: Typed",
+]
+dependencies = [
+    "requests>=2.18.0,<3.0",
+    "urllib3>=1.22,<3.0",
+    "netifaces>=0.10.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.0.0",
+    "requests-mock>=1.8.0",
+    "requests-futures>=1.0.0",
+    "pytest-httpbin>=1.0.0",
+    "mock>=3.0.5",
+    "coverage>=5.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.0.0",
+    "requests-mock>=1.8.0",
+    "requests-futures>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/JordanMilne/Advocate"
+Documentation = "https://github.com/JordanMilne/Advocate#readme"
+Repository = "https://github.com/JordanMilne/Advocate.git"
+Issues = "https://github.com/JordanMilne/Advocate/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["advocate*"]
+
+[tool.setuptools.package-data]
+""" = ["*"]
+
+[tool.wheel]
+universal = true
+
+[tool.ruff]
+target-version = "py38"
+line-length = 95
+select = [
+    "E",
+    "F",
+    "I",
+    "N",
+    "W",
+    "UP",
+    "C4",
+    "SIM",
+    "B",
+]
+ignore = [
+    "E702",
+    "E712",
+    "E902",
+    "N802",
+    "F401",
+]
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.isort]
+known-first-party = ["advocate"]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["test.*", "tests.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+addopts = "-p no:warnings --cov=advocate --cov-report=term-missing"
+testpaths = ["test"]
+norecursedirs = ["env", "build", "docs", ".eggs", ".git", "packages", "dev_packages", "dist", ".cache", ".venv"]
+
+[tool.coverage.run]
+source = ["advocate"]
+branch = true
+parallel = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+
+[tool.bandit]
+skip = ["B101"]

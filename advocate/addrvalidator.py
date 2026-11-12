@@ -1,20 +1,36 @@
+"""
+Address Validator for Advocate.
+
+This module provides the AddrValidator class which validates IP addresses,
+hostnames, and address information to prevent SSRF attacks and other
+security issues.
+"""
+
 import functools
 import fnmatch
 import ipaddress
 import re
+from typing import Any, Callable, Dict, List, Optional, Pattern, Set, Tuple, Union
 
 try:
     import netifaces
     HAVE_NETIFACES = True
 except ImportError:
-    netifaces = None
+    netifaces = None  # type: ignore
     HAVE_NETIFACES = False
 
-from .exceptions import NameserverException, ConfigException
+from .exceptions import ConfigException, NameserverException
 
 
-def canonicalize_hostname(hostname):
-    """Lowercase and punycodify a hostname"""
+def canonicalize_hostname(hostname: str) -> str:
+    """Lowercase and punycodify a hostname.
+    
+    Args:
+        hostname: The hostname to canonicalize.
+        
+    Returns:
+        The canonicalized hostname in lowercase with IDNA encoding.
+    """
     # We do the lowercasing after IDNA encoding because we only want to
     # lowercase the *ASCII* chars.
     # TODO: The differences between IDNA2003 and IDNA2008 might be relevant
@@ -22,12 +38,21 @@ def canonicalize_hostname(hostname):
     return str(hostname.encode("idna").lower(), 'utf-8')
 
 
-def determine_local_addresses():
-    """Get all IPs that refer to this machine according to netifaces"""
+def determine_local_addresses() -> List[ipaddress.IPv4Network]:
+    """Get all IPs that refer to this machine according to netifaces.
+    
+    Returns:
+        A list of IP network objects representing local addresses.
+        
+    Raises:
+        ConfigException: If netifaces module is not available.
+    """
     if not HAVE_NETIFACES:
-        raise ConfigException("Tried to determine local addresses, "
-                              "but netifaces module was not importable")
-    ips = []
+        raise ConfigException(
+            "Tried to determine local addresses, "
+            "but netifaces module was not importable"
+        )
+    ips: List[ipaddress.IPv4Network] = []
     for interface in netifaces.interfaces():
         if_families = netifaces.ifaddresses(interface)
         for family_kind in {netifaces.AF_INET, netifaces.AF_INET6}:
@@ -40,15 +65,15 @@ def determine_local_addresses():
     return ips
 
 
-def add_local_address_arg(func):
-    """Add the "_local_addresses" kwarg if it's missing
+def add_local_address_arg(func: Callable[..., Any]) -> Callable[..., Any]:
+    """Add the "_local_addresses" kwarg if it's missing.
 
     IMO this information shouldn't be cached between calls (what if one of the
     adapters got a new IP at runtime?,) and we don't want each function to
     recalculate it. Just recalculate it if the caller didn't provide it for us.
     """
     @functools.wraps(func)
-    def wrapper(self, *args, **kwargs):
+    def wrapper(self: "AddrValidator", *args: Any, **kwargs: Any) -> Any:
         if "_local_addresses" not in kwargs:
             if self.autodetect_local_addresses:
                 kwargs["_local_addresses"] = determine_local_addresses()
@@ -58,28 +83,52 @@ def add_local_address_arg(func):
     return wrapper
 
 
+# Type alias for addrinfo tuple
+AddrInfoTuple = Tuple[int, int, int, bytes, Tuple[Any, ...]]
+
+
 class AddrValidator:
+    """Validator for IP addresses, hostnames, and address information.
+    
+    This class provides comprehensive validation of network addresses to
+    prevent SSRF attacks and other security issues. It supports blacklists
+    and whitelists for IPs, ports, and hostnames, and can auto-detect
+    local addresses.
+    
+    Attributes:
+        ip_blacklist: Set of IP networks to blacklist.
+        ip_whitelist: Set of IP networks to whitelist (takes precedence over blacklist).
+        port_blacklist: Set of ports to blacklist.
+        port_whitelist: Set of ports to whitelist (takes precedence over blacklist).
+        hostname_blacklist: Set of hostname patterns to blacklist.
+        allow_ipv6: Whether to allow IPv6 addresses.
+        allow_teredo: Whether to allow Teredo tunneling.
+        allow_6to4: Whether to allow 6to4 tunneling.
+        allow_dns64: Whether to allow DNS64.
+        autodetect_local_addresses: Whether to automatically detect local addresses.
+    """
+
     _6TO4_RELAY_NET = ipaddress.ip_network("192.88.99.0/24")
     # Just the well known prefix, DNS64 servers can set their own
     # prefix, but in practice most probably don't.
     _DNS64_WK_PREFIX = ipaddress.ip_network("64:ff9b::/96")
-    DEFAULT_PORT_WHITELIST = {80, 8080, 443, 8443, 8000}
+    DEFAULT_PORT_WHITELIST: Set[int] = {80, 8080, 443, 8443, 8000}
 
     def __init__(
             self,
-            ip_blacklist=None,
-            ip_whitelist=None,
-            port_whitelist=None,
-            port_blacklist=None,
-            hostname_blacklist=None,
-            allow_ipv6=False,
-            allow_teredo=False,
-            allow_6to4=False,
-            allow_dns64=False,
+            ip_blacklist: Optional[Set[ipaddress.IPv4Network]] = None,
+            ip_whitelist: Optional[Set[Union[ipaddress.IPv4Network, ipaddress.IPv6Network]]] = None,
+            port_whitelist: Optional[Set[int]] = None,
+            port_blacklist: Optional[Set[int]] = None,
+            hostname_blacklist: Optional[Set[str]] = None,
+            allow_ipv6: bool = False,
+            allow_teredo: bool = False,
+            allow_6to4: bool = False,
+            allow_dns64: bool = False,
             # Must be explicitly set to "False" if you don't want to try
             # detecting local interface addresses with netifaces.
-            autodetect_local_addresses=True,
-    ):
+            autodetect_local_addresses: bool = True,
+    ) -> None:
         if not port_blacklist and not port_whitelist:
             # An assortment of common HTTPS? ports.
             port_whitelist = self.DEFAULT_PORT_WHITELIST.copy()
@@ -98,9 +147,24 @@ class AddrValidator:
         self.autodetect_local_addresses = autodetect_local_addresses
 
     @add_local_address_arg
-    def is_ip_allowed(self, addr_ip, _local_addresses=None):
-        if not isinstance(addr_ip,
-                          (ipaddress.IPv4Address, ipaddress.IPv6Address)):
+    def is_ip_allowed(
+            self, 
+            addr_ip: Union[str, ipaddress.IPv4Address, ipaddress.IPv6Address],
+            _local_addresses: Optional[List[ipaddress.IPv4Network]] = None
+    ) -> bool:
+        """Check if an IP address is allowed.
+        
+        Args:
+            addr_ip: The IP address to check.
+            _local_addresses: Local addresses to check against (auto-detected if not provided).
+            
+        Returns:
+            True if the IP address is allowed, False otherwise.
+        """
+        if not isinstance(
+                addr_ip,
+                (ipaddress.IPv4Address, ipaddress.IPv6Address)
+        ):
             addr_ip = ipaddress.ip_address(addr_ip)
 
         # The whitelist should take precedence over the blacklist so we can
@@ -127,7 +191,7 @@ class AddrValidator:
                 return False
 
             # v6 addresses can also map to IPv4 addresses! Tricky!
-            v4_nested = []
+            v4_nested: List[ipaddress.IPv4Address] = []
             if addr_ip.ipv4_mapped:
                 v4_nested.append(addr_ip.ipv4_mapped)
             # WTF IPv6? Why you gotta have a billion tunneling mechanisms?
@@ -183,7 +247,16 @@ class AddrValidator:
         # It doesn't look bad, so... it's must be ok!
         return True
 
-    def _hostname_matches_pattern(self, hostname, pattern):
+    def _hostname_matches_pattern(self, hostname: str, pattern: Union[str, Pattern[str]]) -> bool:
+        """Check if a hostname matches a pattern.
+        
+        Args:
+            hostname: The hostname to check.
+            pattern: The pattern to match against (can be a glob string or regex).
+            
+        Returns:
+            True if the hostname matches the pattern, False otherwise.
+        """
         # If they specified a string, just assume they only want basic globbing.
         # This stops people from not realizing they're dealing in REs and
         # not escaping their periods unless they specifically pass in an RE.
@@ -204,7 +277,15 @@ class AddrValidator:
         return any(re.match(pattern, x.strip(".")) for x
                    in (no_null_hostname, hostname))
 
-    def is_hostname_allowed(self, hostname):
+    def is_hostname_allowed(self, hostname: str) -> bool:
+        """Check if a hostname is allowed.
+        
+        Args:
+            hostname: The hostname to check.
+            
+        Returns:
+            True if the hostname is allowed, False otherwise.
+        """
         # Sometimes (like with "external" services that your IP has privileged
         # access to) you might not always know the IP range to blacklist access
         # to, or the `A` record might change without you noticing.
@@ -222,12 +303,25 @@ class AddrValidator:
         return True
 
     @add_local_address_arg
-    def is_addrinfo_allowed(self, addrinfo, _local_addresses=None):
+    def is_addrinfo_allowed(
+            self, 
+            addrinfo: AddrInfoTuple,
+            _local_addresses: Optional[List[ipaddress.IPv4Network]] = None
+    ) -> bool:
+        """Check if address information is allowed.
+        
+        Args:
+            addrinfo: The address information tuple from socket.getaddrinfo.
+            _local_addresses: Local addresses to check against.
+            
+        Returns:
+            True if the address information is allowed, False otherwise.
+        """
         assert(len(addrinfo) == 5)
         # XXX: Do we care about any of the other elements? Guessing not.
         family, socktype, proto, canonname, sockaddr = addrinfo
 
-        # The 4th elem inaddrinfo may either be a touple of two or four items,
+        # The 4th elem in addrinfo may either be a tuple of two or four items,
         # depending on whether we're dealing with IPv4 or v6
         if len(sockaddr) == 2:
             # v4
