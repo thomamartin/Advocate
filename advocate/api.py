@@ -325,10 +325,19 @@ class RequestsAPIWrapper:
             return
         # Gnarly, but necessary to give pickle a consistent module-level
         # reference for each wrapper.
-        import pickle as pickle_module
-        wrapper_hash = hashlib.sha256(pickle_module.dumps(self)).hexdigest()
+        # Use the validator's id and its configuration for hashing instead of pickling self
+        # to avoid circular reference issues
+        validator_id = id(self.validator)
+        validator_hash = hash(
+            (validator_id, 
+             tuple(sorted(self.validator.ip_blacklist, key=str)) if self.validator.ip_blacklist else None,
+             tuple(sorted(self.validator.ip_whitelist, key=str)) if self.validator.ip_whitelist else None,
+             tuple(sorted(self.validator.hostname_blacklist)) if self.validator.hostname_blacklist else None)
+        )
+        wrapper_hash = hashlib.sha256(str(validator_hash).encode()).hexdigest()
         cls.__name__ = "_".join((cls.__name__, wrapper_hash))
-        cls.__qualname__ = ".".join((__name__, cls.__name__))
+        cls.__module__ = __name__
+        cls.__qualname__ = cls.__name__
         if not globals().get(cls.__name__):
             globals()[cls.__name__] = cls
 

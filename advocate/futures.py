@@ -53,7 +53,6 @@ def create_futures_session_class():
             self,
             executor: Optional[ThreadPoolExecutor] = None,
             max_workers: int = 2,
-            session: Optional[Session] = None,
             *args: Any,
             **kwargs: Any
         ) -> None:
@@ -62,12 +61,8 @@ def create_futures_session_class():
             Args:
                 executor: ThreadPoolExecutor to use for async requests.
                 max_workers: Maximum number of workers for the executor.
-                session: Optional base Session to use.
                 *args: Additional positional arguments.
                 **kwargs: Additional keyword arguments.
-                
-            Raises:
-                NotImplementedError: If session is not None and not an Advocate Session.
             """
             adapter_kwargs: Dict[str, Any] = {}
             if executor is None:
@@ -79,9 +74,8 @@ def create_futures_session_class():
                         pool_maxsize=max_workers
                     )
             kwargs["_adapter_kwargs"] = adapter_kwargs
-            Session.__init__(self, *args, **kwargs)
             requests_futures.sessions.FuturesSession.__init__(
-                self, executor=executor, session=None
+                self, executor=executor, max_workers=max_workers, adapter_kwargs=adapter_kwargs, *args, **kwargs
             )
 
         @property
