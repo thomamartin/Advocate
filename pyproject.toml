@@ -70,7 +70,7 @@ include = ["advocate*"]
 [tool.wheel]
 universal = true
 
-[tool.ruff]
+[tool.ruff.lint]
 target-version = "py38"
 line-length = 95
 select = [
@@ -94,7 +94,7 @@ ignore = [
 fixable = ["ALL"]
 unfixable = []
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 known-first-party = ["advocate"]
 
 [tool.mypy]
