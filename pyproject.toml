@@ -1,0 +1,98 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "advocate"
+description = """
+A wrapper around the requests library for safely making HTTP requests
+on behalf of a third party
+"""
+license = "Apache-2.0"
+readme = "README.rst"
+authors = [
+    { name = "Jordan Milne", email = "advocate@saynotolinux.com" },
+]
+keywords = ["http", "requests", "security", "ssrf", "proxy", "rebinding", "advocate"]
+requires-python = ">=3.9"
+dependencies = [
+    "requests >=2.18.0, <3.0",
+    "urllib3 >=1.26.6, <3.0",
+    "ifaddr >=0.2.0",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+    "Topic :: Internet :: WWW/HTTP",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/JordanMilne/Advocate"
+Repository = "https://github.com/JordanMilne/Advocate"
+Changelog = "https://github.com/JordanMilne/Advocate/releases"
+
+[project.optional-dependencies]
+test = [
+    "pytest >=7.0",
+    "pytest-cov",
+    "pytest-httpbin",
+    "pytest-mock",
+    "requests-futures >=1.0.1",
+    "requests-mock",
+]
+
+[tool.setuptools]
+packages = ["advocate"]
+
+[tool.setuptools.dynamic]
+version = { attr = "advocate.__version__" }
+
+[tool.pytest.ini_options]
+addopts = "-p no:warnings"
+norecursedirs = "env build docs .eggs .git packages dev_packages dist .cache"
+
+[tool.coverage.run]
+omit = [
+    "advocate/packages/*",
+]
+
+[tool.coverage.report]
+ignore_errors = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self\\.debug",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+]
+
+[tool.ruff]
+line-length = 95
+target-version = "py39"
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+select = [
+    "E4",   # pycodestyle errors
+    "E7",   # pycodestyle errors (statements)
+    "E9",   # pycodestyle errors (runtime)
+    "W605", # invalid escape sequence
+    "F",    # pyflakes
+]
+
+[tool.ruff.lint.per-file-ignores]
+# `test/test_advocate.py` patches `socket.socket` before third-party imports
+# on purpose, so the patched socket class is used wherever possible.
+"test/*" = ["E402"]

@@ -10,6 +10,10 @@
 *.egg-info
 .eggs
 .coverage
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/
 /build
 /dist
 /dev_packages
