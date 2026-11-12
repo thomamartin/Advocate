@@ -1,4 +1,3 @@
-from __future__ import division
 
 import ipaddress
 import pickle
@@ -8,9 +7,11 @@ import unittest
 # This needs to be done before third-party imports to make sure they all use
 # our wrapped socket class, especially in case of subclasses.
 from .monkeypatching import CheckedSocket, DisallowedConnectException
+
 socket.socket = CheckedSocket
 
-from mock import patch
+from unittest.mock import patch
+
 import requests
 import requests_mock
 
@@ -26,7 +27,6 @@ from advocate.exceptions import (
     UnacceptableAddressException,
 )
 from advocate.futures import FuturesSession
-
 
 # We use port 1 for testing because nothing is likely to legitimately listen
 # on it.
@@ -357,40 +357,40 @@ class HostnameTests(unittest.TestCase):
     def test_idn(self):
         # test some basic globs
         self.assertFalse(self._is_hostname_allowed(
-            u"中国.example.org",
+            "中国.example.org",
             fake_lookup=True,
             hostname_blacklist={"*.org"}
         ))
         # case-insensitive, please
         self.assertFalse(self._is_hostname_allowed(
-            u"中国.example.oRg",
+            "中国.example.oRg",
             fake_lookup=True,
             hostname_blacklist={"*.Org"}
         ))
         self.assertFalse(self._is_hostname_allowed(
-            u"中国.example.org",
+            "中国.example.org",
             fake_lookup=True,
             hostname_blacklist={"xn--fiqs8s.*.org"}
         ))
         self.assertFalse(self._is_hostname_allowed(
             "xn--fiqs8s.example.org",
             fake_lookup=True,
-            hostname_blacklist={u"中国.*.org"}
+            hostname_blacklist={"中国.*.org"}
         ))
         self.assertTrue(self._is_hostname_allowed(
-            u"example.org",
+            "example.org",
             fake_lookup=True,
-            hostname_blacklist={u"中国.*.org"}
+            hostname_blacklist={"中国.*.org"}
         ))
         self.assertTrue(self._is_hostname_allowed(
-            u"example.com",
+            "example.com",
             fake_lookup=True,
-            hostname_blacklist={u"中国.*.org"}
+            hostname_blacklist={"中国.*.org"}
         ))
         self.assertTrue(self._is_hostname_allowed(
-            u"foo.example.org",
+            "foo.example.org",
             fake_lookup=True,
-            hostname_blacklist={u"中国.*.org"}
+            hostname_blacklist={"中国.*.org"}
         ))
 
     def test_missing_canonname(self):
@@ -416,8 +416,8 @@ class HostnameTests(unittest.TestCase):
         # possible null termination when checking if the hostname is allowed.
         self.assertFalse(vl.is_hostname_allowed("foo.baz.com\x00.example.com"))
         self.assertFalse(vl.is_hostname_allowed("foo.example.com\x00.baz.com"))
-        self.assertFalse(vl.is_hostname_allowed(u"foo.baz.com\x00.example.com"))
-        self.assertFalse(vl.is_hostname_allowed(u"foo.example.com\x00.baz.com"))
+        self.assertFalse(vl.is_hostname_allowed("foo.baz.com\x00.example.com"))
+        self.assertFalse(vl.is_hostname_allowed("foo.example.com\x00.baz.com"))
 
 
 class ConnectionPoolingTests(unittest.TestCase):
@@ -510,7 +510,7 @@ class AdvocateWrapperTests(unittest.TestCase):
             local_wrapper.get("http://127.0.0.1:1/")
         # Check that we got a connection exception instead of a validation one
         # This might be either exception depending on the requests version
-        self.assertRegexpMatches(
+        self.assertRegex(
             cm.exception.__class__.__name__,
             r"\A(Connection|Protocol)Error",
         )
@@ -535,7 +535,7 @@ class AdvocateWrapperTests(unittest.TestCase):
 
         with self.assertRaises(Exception) as cm:
             sess_instance.get("http://127.0.0.1:1/")
-        self.assertRegexpMatches(
+        self.assertRegex(
             cm.exception.__class__.__name__,
             r"\A(Connection|Protocol)Error",
         )
@@ -552,7 +552,7 @@ class AdvocateWrapperTests(unittest.TestCase):
 
             with self.assertRaises(Exception) as cm:
                 instance.get("http://127.0.0.1:1/")
-            self.assertRegexpMatches(
+            self.assertRegex(
                 cm.exception.__class__.__name__,
                 r"\A(Connection|Protocol)Error",
             )
@@ -633,7 +633,7 @@ class AdvocateWrapperTests(unittest.TestCase):
 class AdvocateFuturesTest(unittest.TestCase):
     def test_get(self):
         sess = FuturesSession()
-        assert 200 == sess.get("http://example.org/").result().status_code
+        assert sess.get("http://example.org/").result().status_code == 200
 
     def test_custom_validator(self):
         validator = AddrValidator(hostname_blacklist={"example.org"})
@@ -653,14 +653,14 @@ class AdvocateFuturesTest(unittest.TestCase):
     def test_passing_session(self):
         try:
             FuturesSession(session=requests.Session())
-            assert False
+            raise AssertionError()
         except NotImplementedError:
             pass
 
         sess = FuturesSession()
         try:
             sess.session = requests.Session()
-            assert False
+            raise AssertionError()
         except NotImplementedError:
             pass
 
@@ -682,7 +682,7 @@ class AdvocateFuturesTest(unittest.TestCase):
             sess.get("http://127.0.0.1:1/").result()
         # Check that we got a connection exception instead of a validation one
         # This might be either exception depending on the requests version
-        self.assertRegexpMatches(
+        self.assertRegex(
             cm.exception.__class__.__name__,
             r"\A(Connection|Protocol)Error",
         )

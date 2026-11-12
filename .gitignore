@@ -1,16 +1,62 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
 *~
-.*.sw?
-*.pyc
-*.pyo
-.cache
-.DS_Store
-*.diff
-*.patch
-*.idea
-*.egg-info
-.eggs
+
+# Testing
 .coverage
-/build
-/dist
-/dev_packages
-/env
+.pytest_cache/
+.tox/
+.nox/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Linting
+.ruff_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+.cache/
+dev_packages/
+
+# Local history
+.hist
+
+# Trash
+*~

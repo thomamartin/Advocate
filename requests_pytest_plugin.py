@@ -9,9 +9,7 @@ import urllib3
 import advocate
 import advocate.api
 from advocate.exceptions import MountDisabledException, ProxyDisabledException
-
 from test.monkeypatching import CheckedSocket
-
 
 SKIP_EXCEPTIONS = (MountDisabledException, ProxyDisabledException)
 IGNORED_ASSERT_PREFIXES = (
