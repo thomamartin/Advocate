@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "A wrapper around the requests library for safely making HTTP requests on behalf of a third party"
 readme = "README.md"
 requires-python = ">=3.8"
-license = {text = "Apache-2.0"}
+license = "Apache-2.0"
 keywords = ["http", "requests", "security", "ssrf", "proxy", "rebinding", "advocate"]
 authors = [
     {name = "Jordan Milne", email = "advocate@saynotolinux.com"}
@@ -17,7 +17,6 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Natural Language :: English",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
@@ -68,7 +67,6 @@ where = ["."]
 include = ["advocate*"]
 
 [tool.wheel]
-universal = true
 
 [tool.ruff.lint]
 target-version = "py38"
