@@ -653,14 +653,14 @@ class AdvocateFuturesTest(unittest.TestCase):
     def test_passing_session(self):
         try:
             FuturesSession(session=requests.Session())
-            assert False
+            raise AssertionError()
         except NotImplementedError:
             pass
 
         sess = FuturesSession()
         try:
             sess.session = requests.Session()
-            assert False
+            raise AssertionError()
         except NotImplementedError:
             pass
 
