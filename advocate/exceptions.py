@@ -16,22 +16,22 @@ class AdvocateException(Exception):
 
 class UnacceptableAddressException(AdvocateException):
     """Raised when an address fails validation checks.
-    
+
     This exception is raised when Advocate detects that a connection attempt
     is being made to an address that violates the configured security policies.
-    
+
     Attributes:
         address: The address that was rejected, typically a (hostname, port) tuple.
     """
 
-    def __init__(self, address: Tuple[str, int]) -> None:
+    def __init__(self, address: tuple[str, int]) -> None:
         self.address = address
         super().__init__(str(address))
 
 
 class NameserverException(AdvocateException):
     """Raised when there's an issue with DNS resolution.
-    
+
     This typically occurs when the nameserver doesn't provide canonical names
     as expected by Advocate's validation logic.
     """
@@ -41,7 +41,7 @@ class NameserverException(AdvocateException):
 
 class MountDisabledException(AdvocateException):
     """Raised when attempting to use mount() on an Advocate Session.
-    
+
     The mount() method is disabled in Advocate to prevent protection bypasses
     by clobbering the validating adapters.
     """
@@ -51,7 +51,7 @@ class MountDisabledException(AdvocateException):
 
 class ProxyDisabledException(NotImplementedError, AdvocateException):
     """Raised when attempting to use proxies with Advocate.
-    
+
     Advocate does not support HTTP proxies as they could potentially
     bypass the security validations.
     """
@@ -61,7 +61,7 @@ class ProxyDisabledException(NotImplementedError, AdvocateException):
 
 class ConfigException(AdvocateException):
     """Raised when there's a configuration error.
-    
+
     This typically occurs when required dependencies are missing or
     when there's an issue with the configuration of the validator.
     """

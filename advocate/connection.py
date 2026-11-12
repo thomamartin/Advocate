@@ -10,7 +10,7 @@ import socket
 from socket import timeout as SocketTimeout
 from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
-from urllib3.connection import HTTPSConnection, HTTPConnection
+from urllib3.connection import HTTPConnection, HTTPSConnection
 from urllib3.exceptions import ConnectTimeoutError
 from urllib3.util.connection import _set_socket_options
 from urllib3.util.connection import create_connection as old_create_connection
@@ -19,20 +19,20 @@ from . import addrvalidator
 from .exceptions import UnacceptableAddressException
 
 # Type variable for socket addresses
-SocketAddress = TypeVar('SocketAddress', bound=Tuple[Any, ...])
+SocketAddress = TypeVar('SocketAddress', bound=tuple[Any, ...])
 
 # Type alias for addrinfo tuple
-AddrInfoTuple = Tuple[int, int, int, bytes, Tuple[Any, ...]]
+AddrInfoTuple = tuple[int, int, int, bytes, tuple[Any, ...]]
 
 
-def advocate_getaddrinfo(host: str, port: int, get_canonname: bool = False) -> List[AddrInfoTuple]:
+def advocate_getaddrinfo(host: str, port: int, get_canonname: bool = False) -> list[AddrInfoTuple]:
     """Get address information with canonical name support.
-    
+
     Args:
         host: The hostname to resolve.
         port: The port number.
         get_canonname: Whether to request canonical names from DNS.
-        
+
     Returns:
         A list of address information tuples.
     """
@@ -50,16 +50,16 @@ def advocate_getaddrinfo(host: str, port: int, get_canonname: bool = False) -> L
     return fix_addrinfo(addrinfo)
 
 
-def fix_addrinfo(records: List[AddrInfoTuple]) -> List[AddrInfoTuple]:
+def fix_addrinfo(records: list[AddrInfoTuple]) -> list[AddrInfoTuple]:
     """Propagate the canonname across records and parse IPs.
 
     I'm not sure if this is just the behaviour of `getaddrinfo` on Linux, but
     it seems like only the first record in the set has the canonname field
     populated.
-    
+
     Args:
         records: List of address information tuples.
-        
+
     Returns:
         Fixed list with canonical names propagated and IPs parsed.
     """
@@ -68,7 +68,7 @@ def fix_addrinfo(records: List[AddrInfoTuple]) -> List[AddrInfoTuple]:
         sa = (ipaddress.ip_address(sa[0]),) + sa[1:]
         return record[0], record[1], record[2], canonname, sa
 
-    canonname: Optional[bytes] = None
+    canonname: bytes | None = None
     if records:
         # Apparently the canonical name is only included in the first record?
         # Add it to all of them.
@@ -78,11 +78,11 @@ def fix_addrinfo(records: List[AddrInfoTuple]) -> List[AddrInfoTuple]:
 
 
 def validating_create_connection(
-    address: Tuple[str, int],
-    timeout: Optional[float] = socket._GLOBAL_DEFAULT_TIMEOUT,
-    source_address: Optional[Tuple[str, int]] = None,
-    socket_options: Optional[Any] = None,
-    validator: Optional[addrvalidator.AddrValidator] = None,
+    address: tuple[str, int],
+    timeout: float | None = socket._GLOBAL_DEFAULT_TIMEOUT,
+    source_address: tuple[str, int] | None = None,
+    socket_options: Any | None = None,
+    validator: addrvalidator.AddrValidator | None = None,
 ) -> socket.socket:
     """Connect to *address* and return the socket object.
 
@@ -101,10 +101,10 @@ def validating_create_connection(
         source_address: Source address to bind to.
         socket_options: Socket options to set.
         validator: The AddrValidator instance to use for validation.
-        
+
     Returns:
         A connected socket object.
-        
+
     Raises:
         UnacceptableAddressException: If the address fails validation.
         socket.error: If connection fails for other reasons.
@@ -123,7 +123,7 @@ def validating_create_connection(
         if not validator.is_hostname_allowed(host):
             raise UnacceptableAddressException((host, port))
 
-    err: Optional[Exception] = None
+    err: Exception | None = None
     addrinfo_list = advocate_getaddrinfo(host, port, get_canonname=need_canonname)
     if addrinfo_list:
         if validator and validator.autodetect_local_addresses:
@@ -140,7 +140,7 @@ def validating_create_connection(
             af, socktype, proto, canonname, sa = res
             # Unparse the validated IP
             sa = (sa[0].exploded,) + sa[1:]
-            sock: Optional[socket.socket] = None
+            sock: socket.socket | None = None
             try:
                 sock = socket.socket(af, socktype, proto)
 
@@ -155,7 +155,7 @@ def validating_create_connection(
                 sock.connect(sa)
                 return sock
 
-            except socket.error as _:
+            except OSError as _:
                 err = _
                 if sock is not None:
                     sock.close()
@@ -166,11 +166,11 @@ def validating_create_connection(
             if validator:
                 err = UnacceptableAddressException(address)
             else:
-                err = socket.error("No acceptable addresses found")
+                err = OSError("No acceptable addresses found")
     if err is not None:
         raise err
     else:
-        raise socket.error("getaddrinfo returns an empty list")
+        raise OSError("getaddrinfo returns an empty list")
 
 
 # TODO: Is there a better way to add this to multiple classes with different
@@ -180,7 +180,7 @@ def _validating_new_conn(self: Any) -> socket.socket:
 
     :return: New socket connection.
     """
-    extra_kw: Dict[str, Any] = {}
+    extra_kw: dict[str, Any] = {}
     if self.source_address:
         extra_kw['source_address'] = self.source_address
 
@@ -203,7 +203,7 @@ def _validating_new_conn(self: Any) -> socket.socket:
             **extra_kw
         )
 
-    except SocketTimeout:
+    except TimeoutError:
         raise ConnectTimeoutError(
             self, "Connection to %s timed out. (connect timeout=%s)" %
             (self.host, self.timeout))
@@ -218,10 +218,10 @@ assert(hasattr(HTTPSConnection, '_new_conn'))
 
 class ValidatingHTTPConnection(HTTPConnection):
     """HTTP connection class with address validation.
-    
+
     This class extends urllib3's HTTPConnection to add Advocate's
     address validation before making connections.
-    
+
     Attributes:
         _validator: The AddrValidator instance used for validation.
     """
@@ -230,7 +230,7 @@ class ValidatingHTTPConnection(HTTPConnection):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize a validating HTTP connection.
-        
+
         Args:
             *args: Positional arguments passed to HTTPConnection.
             **kwargs: Keyword arguments. The 'validator' keyword argument is used
@@ -242,10 +242,10 @@ class ValidatingHTTPConnection(HTTPConnection):
 
 class ValidatingHTTPSConnection(HTTPSConnection):
     """HTTPS connection class with address validation.
-    
+
     This class extends urllib3's HTTPSConnection to add Advocate's
     address validation before making connections.
-    
+
     Attributes:
         _validator: The AddrValidator instance used for validation.
     """
@@ -254,7 +254,7 @@ class ValidatingHTTPSConnection(HTTPSConnection):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize a validating HTTPS connection.
-        
+
         Args:
             *args: Positional arguments passed to HTTPSConnection.
             **kwargs: Keyword arguments. The 'validator' keyword argument is used

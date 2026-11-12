@@ -6,11 +6,13 @@ hostnames, and address information to prevent SSRF attacks and other
 security issues.
 """
 
-import functools
 import fnmatch
+import functools
 import ipaddress
 import re
-from typing import Any, Callable, Dict, List, Optional, Pattern, Set, Tuple, Union
+from collections.abc import Callable
+from re import Pattern
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 try:
     import netifaces
@@ -24,10 +26,10 @@ from .exceptions import ConfigException, NameserverException
 
 def canonicalize_hostname(hostname: str) -> str:
     """Lowercase and punycodify a hostname.
-    
+
     Args:
         hostname: The hostname to canonicalize.
-        
+
     Returns:
         The canonicalized hostname in lowercase with IDNA encoding.
     """
@@ -38,12 +40,12 @@ def canonicalize_hostname(hostname: str) -> str:
     return str(hostname.encode("idna").lower(), 'utf-8')
 
 
-def determine_local_addresses() -> List[ipaddress.IPv4Network]:
+def determine_local_addresses() -> list[ipaddress.IPv4Network]:
     """Get all IPs that refer to this machine according to netifaces.
-    
+
     Returns:
         A list of IP network objects representing local addresses.
-        
+
     Raises:
         ConfigException: If netifaces module is not available.
     """
@@ -52,7 +54,7 @@ def determine_local_addresses() -> List[ipaddress.IPv4Network]:
             "Tried to determine local addresses, "
             "but netifaces module was not importable"
         )
-    ips: List[ipaddress.IPv4Network] = []
+    ips: list[ipaddress.IPv4Network] = []
     for interface in netifaces.interfaces():
         if_families = netifaces.ifaddresses(interface)
         for family_kind in {netifaces.AF_INET, netifaces.AF_INET6}:
@@ -84,17 +86,17 @@ def add_local_address_arg(func: Callable[..., Any]) -> Callable[..., Any]:
 
 
 # Type alias for addrinfo tuple
-AddrInfoTuple = Tuple[int, int, int, bytes, Tuple[Any, ...]]
+AddrInfoTuple = tuple[int, int, int, bytes, tuple[Any, ...]]
 
 
 class AddrValidator:
     """Validator for IP addresses, hostnames, and address information.
-    
+
     This class provides comprehensive validation of network addresses to
     prevent SSRF attacks and other security issues. It supports blacklists
     and whitelists for IPs, ports, and hostnames, and can auto-detect
     local addresses.
-    
+
     Attributes:
         ip_blacklist: Set of IP networks to blacklist.
         ip_whitelist: Set of IP networks to whitelist (takes precedence over blacklist).
@@ -112,15 +114,15 @@ class AddrValidator:
     # Just the well known prefix, DNS64 servers can set their own
     # prefix, but in practice most probably don't.
     _DNS64_WK_PREFIX = ipaddress.ip_network("64:ff9b::/96")
-    DEFAULT_PORT_WHITELIST: Set[int] = {80, 8080, 443, 8443, 8000}
+    DEFAULT_PORT_WHITELIST: set[int] = {80, 8080, 443, 8443, 8000}
 
     def __init__(
             self,
-            ip_blacklist: Optional[Set[ipaddress.IPv4Network]] = None,
-            ip_whitelist: Optional[Set[Union[ipaddress.IPv4Network, ipaddress.IPv6Network]]] = None,
-            port_whitelist: Optional[Set[int]] = None,
-            port_blacklist: Optional[Set[int]] = None,
-            hostname_blacklist: Optional[Set[str]] = None,
+            ip_blacklist: set[ipaddress.IPv4Network] | None = None,
+            ip_whitelist: set[ipaddress.IPv4Network | ipaddress.IPv6Network] | None = None,
+            port_whitelist: set[int] | None = None,
+            port_blacklist: set[int] | None = None,
+            hostname_blacklist: set[str] | None = None,
             allow_ipv6: bool = False,
             allow_teredo: bool = False,
             allow_6to4: bool = False,
@@ -148,16 +150,16 @@ class AddrValidator:
 
     @add_local_address_arg
     def is_ip_allowed(
-            self, 
-            addr_ip: Union[str, ipaddress.IPv4Address, ipaddress.IPv6Address],
-            _local_addresses: Optional[List[ipaddress.IPv4Network]] = None
+            self,
+            addr_ip: str | ipaddress.IPv4Address | ipaddress.IPv6Address,
+            _local_addresses: list[ipaddress.IPv4Network] | None = None
     ) -> bool:
         """Check if an IP address is allowed.
-        
+
         Args:
             addr_ip: The IP address to check.
             _local_addresses: Local addresses to check against (auto-detected if not provided).
-            
+
         Returns:
             True if the IP address is allowed, False otherwise.
         """
@@ -191,7 +193,7 @@ class AddrValidator:
                 return False
 
             # v6 addresses can also map to IPv4 addresses! Tricky!
-            v4_nested: List[ipaddress.IPv4Address] = []
+            v4_nested: list[ipaddress.IPv4Address] = []
             if addr_ip.ipv4_mapped:
                 v4_nested.append(addr_ip.ipv4_mapped)
             # WTF IPv6? Why you gotta have a billion tunneling mechanisms?
@@ -247,13 +249,13 @@ class AddrValidator:
         # It doesn't look bad, so... it's must be ok!
         return True
 
-    def _hostname_matches_pattern(self, hostname: str, pattern: Union[str, Pattern[str]]) -> bool:
+    def _hostname_matches_pattern(self, hostname: str, pattern: str | Pattern[str]) -> bool:
         """Check if a hostname matches a pattern.
-        
+
         Args:
             hostname: The hostname to check.
             pattern: The pattern to match against (can be a glob string or regex).
-            
+
         Returns:
             True if the hostname matches the pattern, False otherwise.
         """
@@ -279,10 +281,10 @@ class AddrValidator:
 
     def is_hostname_allowed(self, hostname: str) -> bool:
         """Check if a hostname is allowed.
-        
+
         Args:
             hostname: The hostname to check.
-            
+
         Returns:
             True if the hostname is allowed, False otherwise.
         """
@@ -304,16 +306,16 @@ class AddrValidator:
 
     @add_local_address_arg
     def is_addrinfo_allowed(
-            self, 
+            self,
             addrinfo: AddrInfoTuple,
-            _local_addresses: Optional[List[ipaddress.IPv4Network]] = None
+            _local_addresses: list[ipaddress.IPv4Network] | None = None
     ) -> bool:
         """Check if address information is allowed.
-        
+
         Args:
             addrinfo: The address information tuple from socket.getaddrinfo.
             _local_addresses: Local addresses to check against.
-            
+
         Returns:
             True if the address information is allowed, False otherwise.
         """

@@ -24,6 +24,7 @@ from .adapters import ValidatingHTTPAdapter
 from .addrvalidator import AddrValidator
 from .api import (
     RequestsAPIWrapper,
+    Session,
     delete,
     get,
     head,
@@ -33,7 +34,6 @@ from .api import (
     put,
     request,
     session,
-    Session,
 )
 from .exceptions import (
     AdvocateException,

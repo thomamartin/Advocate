@@ -7,15 +7,16 @@ Advocate's validating connection pools.
 
 import collections
 import functools
-from typing import Any, Callable, Dict
+from collections.abc import Callable
+from typing import Any, Dict
 
 from urllib3 import PoolManager
-from urllib3.poolmanager import _default_key_normalizer, PoolKey
+from urllib3.poolmanager import PoolKey, _default_key_normalizer
 
 from .addrvalidator import AddrValidator
 from .connectionpool import (
-    ValidatingHTTPSConnectionPool,
     ValidatingHTTPConnectionPool,
+    ValidatingHTTPSConnectionPool,
 )
 
 pool_classes_by_scheme = {
@@ -29,13 +30,13 @@ AdvocatePoolKey = collections.namedtuple(
 )
 
 
-def key_normalizer(key_class: Any, request_context: Dict[str, Any]) -> Any:
+def key_normalizer(key_class: Any, request_context: dict[str, Any]) -> Any:
     """Create a pool key with validator ID.
-    
+
     Args:
         key_class: The pool key class.
         request_context: The request context dictionary.
-        
+
     Returns:
         A normalized pool key.
     """
@@ -48,7 +49,7 @@ def key_normalizer(key_class: Any, request_context: Dict[str, Any]) -> Any:
     return _default_key_normalizer(key_class, request_context)
 
 
-key_fn_by_scheme: Dict[str, Callable[..., Any]] = {
+key_fn_by_scheme: dict[str, Callable[..., Any]] = {
     'http': functools.partial(key_normalizer, AdvocatePoolKey),
     'https': functools.partial(key_normalizer, AdvocatePoolKey),
 }
@@ -56,18 +57,18 @@ key_fn_by_scheme: Dict[str, Callable[..., Any]] = {
 
 class ValidatingPoolManager(PoolManager):
     """Pool manager with address validation.
-    
+
     This class extends urllib3's PoolManager to use Advocate's
     validating connection pools and to create pool keys that
     include the validator.
-    
+
     Attributes:
         validator: The AddrValidator instance used for validation.
     """
 
     def __init__(self, *args: Any, validator: AddrValidator, **kwargs: Any) -> None:
         """Initialize a validating pool manager.
-        
+
         Args:
             *args: Positional arguments passed to PoolManager.
             validator: The AddrValidator instance to use for validation.

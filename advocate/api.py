@@ -12,7 +12,8 @@ itself.
 import hashlib
 import pickle
 from collections import OrderedDict
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from collections.abc import Callable
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import requests
 from requests import Session as RequestsSession
@@ -25,16 +26,16 @@ from .exceptions import MountDisabledException
 
 class Session(RequestsSession):
     """Convenience wrapper around `requests.Session` set up for `advocate`ing.
-    
+
     This session class automatically applies Advocate's validation to all
     HTTP requests made through it.
-    
+
     Attributes:
         validator: The AddrValidator instance used for validation.
     """
 
     __attrs__ = RequestsSession.__attrs__ + ["validator"]
-    DEFAULT_VALIDATOR: Optional[AddrValidator] = None
+    DEFAULT_VALIDATOR: AddrValidator | None = None
     """
     User-replaceable default validator to use for all Advocate sessions,
     includes sessions created by advocate.get()
@@ -42,7 +43,7 @@ class Session(RequestsSession):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize an Advocate session.
-        
+
         Args:
             *args: Positional arguments passed to requests.Session.
             **kwargs: Keyword arguments. The 'validator' keyword argument is used
@@ -65,11 +66,11 @@ class Session(RequestsSession):
 
     def mount(self, *args: Any, **kwargs: Any) -> None:
         """Wrapper around `mount()` to prevent a protection bypass.
-        
+
         Args:
             *args: Positional arguments for mount.
             **kwargs: Keyword arguments for mount.
-            
+
         Raises:
             MountDisabledException: If mount is called after session initialization.
         """
@@ -83,11 +84,11 @@ class Session(RequestsSession):
 
 def session(*args: Any, **kwargs: Any) -> Session:
     """Create a new Advocate session.
-    
+
     Args:
         *args: Positional arguments passed to Session.
         **kwargs: Keyword arguments passed to Session.
-        
+
     Returns:
         A new Session instance.
     """
@@ -224,11 +225,11 @@ def delete(url: str, **kwargs: Any) -> Response:
 
 class RequestsAPIWrapper:
     """Provides a `requests.api`-like interface with a specific validator.
-    
+
     This class allows you to create a custom requests-like API with a
     pre-configured validator, making it easier to apply consistent
     security policies across your application.
-    
+
     Attributes:
         validator: The AddrValidator instance used for validation.
         Session: A Session class that uses the wrapper's validator.
@@ -249,7 +250,7 @@ class RequestsAPIWrapper:
 
     def __init__(self, validator: AddrValidator) -> None:
         """Initialize the RequestsAPIWrapper.
-        
+
         Args:
             validator: The AddrValidator instance to use for all requests.
         """
@@ -301,7 +302,7 @@ class RequestsAPIWrapper:
 
     def __getattr__(self, item: str) -> Any:
         """Get attributes from the base advocate module.
-        
+
         This class is meant to mimic the requests base module, so if we don't
         have this attribute, it might be on the base module (like the Request
         class, etc.)
@@ -319,7 +320,7 @@ class RequestsAPIWrapper:
             return fun(*args, **kwargs)
         return wrapped_func
 
-    def _make_wrapper_cls_global(self, cls: Type[Any]) -> None:
+    def _make_wrapper_cls_global(self, cls: type[Any]) -> None:
         """Make a wrapper class available at module level for pickling."""
         if not self.SUPPORT_WRAPPER_PICKLING:
             return
@@ -329,7 +330,7 @@ class RequestsAPIWrapper:
         # to avoid circular reference issues
         validator_id = id(self.validator)
         validator_hash = hash(
-            (validator_id, 
+            (validator_id,
              tuple(sorted(self.validator.ip_blacklist, key=str)) if self.validator.ip_blacklist else None,
              tuple(sorted(self.validator.ip_whitelist, key=str)) if self.validator.ip_whitelist else None,
              tuple(sorted(self.validator.hostname_blacklist)) if self.validator.hostname_blacklist else None)

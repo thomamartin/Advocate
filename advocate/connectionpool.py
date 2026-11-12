@@ -23,7 +23,7 @@ assert(hasattr(HTTPSConnectionPool, 'scheme'))
 
 class ValidatingHTTPConnectionPool(HTTPConnectionPool):
     """HTTP connection pool with address validation.
-    
+
     This class extends urllib3's HTTPConnectionPool to use
     ValidatingHTTPConnection for all connections.
     """
@@ -34,7 +34,7 @@ class ValidatingHTTPConnectionPool(HTTPConnectionPool):
 
 class ValidatingHTTPSConnectionPool(HTTPSConnectionPool):
     """HTTPS connection pool with address validation.
-    
+
     This class extends urllib3's HTTPSConnectionPool to use
     ValidatingHTTPSConnection for all connections.
     """

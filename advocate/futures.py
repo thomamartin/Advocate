@@ -6,7 +6,7 @@ of requests-futures with Advocate's security validation.
 """
 
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from requests.adapters import DEFAULT_POOLSIZE
 
@@ -28,22 +28,22 @@ def create_futures_session_class():
             "requests-futures is required for FuturesSession. "
             "Install it with: pip install requests-futures"
         )
-    
+
     # Import here to avoid circular import
     from .api import Session
-    
+
     class FuturesSession(requests_futures.sessions.FuturesSession, Session):
         """A FuturesSession with Advocate validation.
-        
+
         This class combines the async capabilities of requests-futures
         with Advocate's security validation. It allows you to make
         asynchronous HTTP requests while still enforcing security policies.
-        
+
         Example:
             >>> sess = FuturesSession(max_workers=20)
             >>> future = sess.get("http://example.com/")
             >>> response = future.result()
-        
+
         Note:
             This class requires the requests-futures package to be installed.
             Install it with: pip install requests-futures
@@ -51,20 +51,20 @@ def create_futures_session_class():
 
         def __init__(
             self,
-            executor: Optional[ThreadPoolExecutor] = None,
+            executor: ThreadPoolExecutor | None = None,
             max_workers: int = 2,
             *args: Any,
             **kwargs: Any
         ) -> None:
             """Initialize a FuturesSession with validation.
-            
+
             Args:
                 executor: ThreadPoolExecutor to use for async requests.
                 max_workers: Maximum number of workers for the executor.
                 *args: Additional positional arguments.
                 **kwargs: Additional keyword arguments.
             """
-            adapter_kwargs: Dict[str, Any] = {}
+            adapter_kwargs: dict[str, Any] = {}
             if executor is None:
                 executor = ThreadPoolExecutor(max_workers=max_workers)
                 # set connection pool size equal to max_workers if needed
@@ -75,7 +75,7 @@ def create_futures_session_class():
                     )
             kwargs["_adapter_kwargs"] = adapter_kwargs
             requests_futures.sessions.FuturesSession.__init__(
-                self, executor=executor, max_workers=max_workers, adapter_kwargs=adapter_kwargs, *args, **kwargs
+                self, *args, executor=executor, max_workers=max_workers, adapter_kwargs=adapter_kwargs, **kwargs
             )
 
         @property
@@ -86,10 +86,10 @@ def create_futures_session_class():
         @session.setter
         def session(self, value: Any) -> None:
             """Set the underlying session.
-            
+
             Args:
                 value: The session to set.
-                
+
             Raises:
                 NotImplementedError: If value is not None and not an Advocate Session.
             """
@@ -99,7 +99,7 @@ def create_futures_session_class():
                     "non-advocate values disabled "
                     "to prevent whitelist bypasses"
                 )
-    
+
     return FuturesSession
 
 
