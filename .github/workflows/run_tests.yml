@@ -3,39 +3,57 @@ name: Tests
 on: [push, pull_request]
 
 jobs:
-  build:
+  test:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-20.04]
-        requests_version: ["2.18.4", "2.23.0", "2.28.1"]
+        os: [ubuntu-latest]
+        python_version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        # The latest versions of requests/urllib3 by default; compatibility
+        # combinations below pin older ones explicitly.
+        requests_version: ["latest"]
+        urllib3_version: ["latest"]
         include:
-          - urllib3_version: "1.22"
-            python_version: "3.6"
-            pytest_version: "3.10.1"
-          # Make sure we're testing with an up-to-date urllib3 version, that can affect
-          # whether our hooks will work as well!
-          - requests_version: "2.28.1"
-            urllib3_version: "1.26.11"
-            python_version: "3.10"
-            pytest_version: "6.2.5"
+          # `setup-python` no longer ships Python 3.9 toolchains on
+          # ubuntu-latest, so the 3.9 jobs run on 24.04 runners.
+          - os: "ubuntu-24.04"
+            python_version: "3.9"
+            requests_version: "latest"
+            urllib3_version: "latest"
+          # Oldest supported combination
+          - os: "ubuntu-24.04"
+            python_version: "3.9"
+            requests_version: "2.28.1"
+            urllib3_version: "1.26.20"
+          # urllib3 2.0 and a reasonably old requests
+          - os: "ubuntu-24.04"
+            python_version: "3.9"
+            requests_version: "2.31.0"
+            urllib3_version: "2.0.7"
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Set up Python ${{ matrix.python_version }}
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python_version }}
     - name: Install dependencies
       run: |
-        pip install "urllib3==${{matrix.urllib3_version}}"
-        pip install "pytest==${{matrix.pytest_version}}"
-        mkdir build
-        pip install --src build/ -e git+https://github.com/psf/requests@v${{matrix.requests_version}}#egg=requests -r requirements-test.txt
+        pip install -e ".[test]"
+        if [ "${{ matrix.requests_version }}" != "latest" ]; then
+          pip install "requests==${{ matrix.requests_version }}"
+        fi
+        if [ "${{ matrix.urllib3_version }}" != "latest" ]; then
+          pip install "urllib3==${{ matrix.urllib3_version }}"
+        fi
+        pip list
     - name: Run tests
       run: |
-        export ADVOCATE_BUILD_DIR=$(pwd)
-        export WANTED_REQUESTS_VERSION="${{matrix.requests_version}}"
-        export WANTED_URLLIB3_VERSION="${{matrix.urllib3_version}}"
-        pytest --cov=advocate --cov-config=.coveragerc
-        pushd build/requests && PYTHONPATH="${ADVOCATE_BUILD_DIR}" pytest -p requests_pytest_plugin && popd
+        if [ "${{ matrix.requests_version }}" != "latest" ]; then
+          export WANTED_REQUESTS_VERSION="${{ matrix.requests_version }}"
+        fi
+        if [ "${{ matrix.urllib3_version }}" != "latest" ]; then
+          export WANTED_URLLIB3_VERSION="${{ matrix.urllib3_version }}"
+        fi
+        pytest --cov=advocate

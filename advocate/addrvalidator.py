@@ -4,11 +4,11 @@ import ipaddress
 import re
 
 try:
-    import netifaces
-    HAVE_NETIFACES = True
+    import ifaddr
+    HAVE_IFADDR = True
 except ImportError:
-    netifaces = None
-    HAVE_NETIFACES = False
+    ifaddr = None
+    HAVE_IFADDR = False
 
 from .exceptions import NameserverException, ConfigException
 
@@ -23,20 +23,28 @@ def canonicalize_hostname(hostname):
 
 
 def determine_local_addresses():
-    """Get all IPs that refer to this machine according to netifaces"""
-    if not HAVE_NETIFACES:
+    """Get all IPs that refer to this machine according to ifaddr"""
+    if not HAVE_IFADDR:
         raise ConfigException("Tried to determine local addresses, "
-                              "but netifaces module was not importable")
+                              "but ifaddr module was not importable")
     ips = []
-    for interface in netifaces.interfaces():
-        if_families = netifaces.ifaddresses(interface)
-        for family_kind in {netifaces.AF_INET, netifaces.AF_INET6}:
-            addrs = if_families.get(family_kind, [])
-            for addr in (x.get("addr", "") for x in addrs):
-                if family_kind == netifaces.AF_INET6:
-                    # We can't do anything sensible with the scope here
-                    addr = addr.split("%")[0]
-                ips.append(ipaddress.ip_network(addr))
+    for adapter in ifaddr.get_adapters():
+        for addr in adapter.ips:
+            if addr.is_IPv6:
+                # `ifaddr` returns IPv6 addresses as a
+                # (address, flowinfo, scope_id) tuple on some platforms.
+                # We can't do anything sensible with the scope here.
+                host = addr.ip[0] if isinstance(addr.ip, tuple) else addr.ip
+                ips.append(ipaddress.ip_network((host, 128), strict=False))
+            else:
+                # Match `netifaces`' old behaviour of permitting the whole
+                # configured subnet, so e.g. DNS rebinding to a neighbouring
+                # address in the same subnet is still caught.
+                network = ipaddress.ip_network(
+                    (addr.ip, addr.network_prefix), strict=False
+                )
+                if network.version == 4:
+                    ips.append(network)
     return ips
 
 
@@ -77,7 +85,7 @@ class AddrValidator:
             allow_6to4=False,
             allow_dns64=False,
             # Must be explicitly set to "False" if you don't want to try
-            # detecting local interface addresses with netifaces.
+            # detecting local interface addresses with ifaddr.
             autodetect_local_addresses=True,
     ):
         if not port_blacklist and not port_whitelist:

@@ -8,7 +8,9 @@ Advocate
 .. image:: https://img.shields.io/pypi/v/advocate.svg
     :target: https://pypi.python.org/pypi/advocate
 
-**Advocate is no longer maintained, please fork and rename if you would like to continue work on it**
+**Note:** This is a maintained, modernized fork of `JordanMilne/Advocate <https://github.com/JordanMilne/Advocate>`_,
+updated for current Python versions, ``urllib3`` 1.26 and 2.x, and pure-Python
+interface detection (``ifaddr`` instead of the unmaintained ``netifaces``).
 
 Advocate is a set of tools based around the `requests library <https://github.com/kennethreitz/requests>`_ for safely making
 HTTP requests on behalf of a third party. Specifically, it aims to prevent 
@@ -23,7 +25,8 @@ Installation
 
     pip install advocate
 
-Advocate is officially supported on CPython 3.6+. PyPy 3 may work as well, but is not tested.
+Advocate supports CPython 3.9+ and works with ``urllib3`` 1.26 and 2.x.
+PyPy 3 may work as well, but is not tested.
 
 Examples
 ========

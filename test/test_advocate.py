@@ -10,7 +10,7 @@ import unittest
 from .monkeypatching import CheckedSocket, DisallowedConnectException
 socket.socket = CheckedSocket
 
-from mock import patch
+from unittest.mock import patch
 import requests
 import requests_mock
 
@@ -312,10 +312,10 @@ class AddrInfoTests(unittest.TestCase):
         ))
         mock_determine_local_addresses.assert_not_called()
 
-    def test_netifaces_presence_optional(self):
-        # Advocate should still work without netifaces, but only if you've specifically
+    def test_ifaddr_presence_optional(self):
+        # Advocate should still work without ifaddr, but only if you've specifically
         # said you don't care about checking against local interface addresses.
-        with patch("advocate.addrvalidator.HAVE_NETIFACES", False):
+        with patch("advocate.addrvalidator.HAVE_IFADDR", False):
             with self.assertRaises(ConfigException):
                 self._is_addrinfo_allowed("200.1.1.1", 80, autodetect_local_addresses=True)
             with self.assertRaises(ConfigException):
@@ -434,7 +434,9 @@ class ConnectionPoolingTests(unittest.TestCase):
         mock_new_conn.assert_not_called()
         try:
             advocate.get("http://httpbin.org/")
-        except:
+        except Exception:
+            # The details of the failure don't matter, we only care that it
+            # tried to open a connection
             pass
         # Requests may retry several times, but our mock doesn't return a real
         # socket. Just check that it tried to create one.
@@ -510,7 +512,7 @@ class AdvocateWrapperTests(unittest.TestCase):
             local_wrapper.get("http://127.0.0.1:1/")
         # Check that we got a connection exception instead of a validation one
         # This might be either exception depending on the requests version
-        self.assertRegexpMatches(
+        self.assertRegex(
             cm.exception.__class__.__name__,
             r"\A(Connection|Protocol)Error",
         )
@@ -535,7 +537,7 @@ class AdvocateWrapperTests(unittest.TestCase):
 
         with self.assertRaises(Exception) as cm:
             sess_instance.get("http://127.0.0.1:1/")
-        self.assertRegexpMatches(
+        self.assertRegex(
             cm.exception.__class__.__name__,
             r"\A(Connection|Protocol)Error",
         )
@@ -552,7 +554,7 @@ class AdvocateWrapperTests(unittest.TestCase):
 
             with self.assertRaises(Exception) as cm:
                 instance.get("http://127.0.0.1:1/")
-            self.assertRegexpMatches(
+            self.assertRegex(
                 cm.exception.__class__.__name__,
                 r"\A(Connection|Protocol)Error",
             )
@@ -682,7 +684,7 @@ class AdvocateFuturesTest(unittest.TestCase):
             sess.get("http://127.0.0.1:1/").result()
         # Check that we got a connection exception instead of a validation one
         # This might be either exception depending on the requests version
-        self.assertRegexpMatches(
+        self.assertRegex(
             cm.exception.__class__.__name__,
             r"\A(Connection|Protocol)Error",
         )
